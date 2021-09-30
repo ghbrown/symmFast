@@ -1,0 +1,4 @@
+
+build/mod/*
+build/obj/*
+build/exe/*
