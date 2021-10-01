@@ -2,3 +2,5 @@
 /build/mod
 /build/obj
 /build/exe
+/src/canonical/*.f90
+/src/fast/*.f90
