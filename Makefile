@@ -8,8 +8,8 @@ F_EXTENSION=f90
 #source directory variables
 SRC_DIR=src
 HELLO_DIR=$(SRC_DIR)/hello
-SERIAL_DIR=$(SRC_DIR)/serial
-PARALLEL_DIR=$(SRC_DIR)/parallel
+CANONICAL_DIR=$(SRC_DIR)/canonical
+FAST_DIR=$(SRC_DIR)/fast
 
 #build directory variables
 BUILD_DIR=build
@@ -19,11 +19,15 @@ EXE_DIR=$(BUILD_DIR)/exe
 
 #groups of programs
 HELLO_PROGS="hello"
+CANONICAL_PROGS="c_d_s_symv"
 
 
 all:
 	#@$(MAKE) -s serial
 	#@$(MAKE) -s parallel
+
+kinds:
+	@$(FC) -I $(MOD_DIR) -J $(MOD_DIR) -o $(OBJ_DIR)/stdlib_kinds.o -c $(SRC_DIR)/stdlib_kinds.f90
 
 hello:
 	$(foreach FPP_FILE, $(HELLO_PROGS), \
@@ -31,11 +35,17 @@ hello:
 	$(foreach F_FILE, $(HELLO_PROGS), \
 		$(FC) -I $(MOD_DIR) -J $(MOD_DIR) -o $(OBJ_DIR)/$(F_FILE).o -c $(HELLO_DIR)/$(F_FILE).$(F_EXTENSION))
 
-serial:
+canonical:
+	@$(MAKE) -s kinds
+	$(foreach FPP_FILE, $(CANONICAL_PROGS), \
+		$(FPP) $(CANONICAL_DIR)/$(FPP_FILE).$(FPP_EXTENSION) $(CANONICAL_DIR)/$(FPP_FILE).f90;)
+	$(foreach F_FILE, $(CANONICAL_PROGS), \
+		$(FC) -I $(MOD_DIR) -J $(MOD_DIR) -o $(OBJ_DIR)/$(F_FILE).o -c $(CANONICAL_DIR)/$(F_FILE).$(F_EXTENSION))
 
-parallel:
+fast:
 
 clean:
 	@rm -rf $(BUILD_DIR)
 	@mkdir $(BUILD_DIR) $(MOD_DIR) $(OBJ_DIR) $(EXE_DIR)
-	@find ./ -name '*.$(F_EXTENSION)' -delete
+	@find $(CANONICAL_DIR) -name '*.$(F_EXTENSION)' -delete
+	@find $(FAST_DIR) -name '*.$(F_EXTENSION)' -delete

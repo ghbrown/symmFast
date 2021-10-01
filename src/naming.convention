@@ -1,0 +1,11 @@
+
+x_xx_x_symv:
+	x = c, f
+	  c - canonical
+	  f - fast
+	xx = d, s
+	  d - dense
+	  s - sparse
+	xxx = s, p
+	  s - serial
+	  p - parallel
