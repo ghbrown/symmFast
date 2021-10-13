@@ -4,11 +4,13 @@ SHELL               = /bin/bash
 OS                 := $(shell uname)
 
 ifeq ($(OS),Darwin)
-  PROJ_ARCH       ?= arch-darwin-debug
-  PROJ_LIB_SUFFIX  = dylib
+  PROJ_ARCH             ?= arch-darwin-debug
+  PROJ_LIB_SUFFIX        = dylib
+  PROJ_LINKER_FLAGS_BASE = -shared -dynamiclib -Wl,-commons,use_dylibs
 else
-  PROJ_ARCH       ?= arch-linux-debug
-  PROJ_LIB_SUFFIX  = so
+  PROJ_ARCH             ?= arch-linux-debug
+  PROJ_LIB_SUFFIX        = so
+  PROJ_LINKER_FLAGS_BASE = -shared
 endif
 
 PROJ_VERSION     = 0.0.1
@@ -19,7 +21,6 @@ PROJ_OBJ_DIR     = $(PROJ_BUILD_DIR)/obj
 PROJ_LIB_DIR     = $(PROJ_BUILD_DIR)/lib
 
 PROJ_LIB_BASE          = libsymmfast
-PROJ_LINKER_FLAGS_BASE = -shared -dynamiclib
 PROJ_LONG_LIB_NAME     = $(PROJ_LIB_BASE).$(PROJ_VERSION).$(PROJ_LIB_SUFFIX)
 PROJ_SHORT_LIB_NAME    = -lsymmfast
 PROJ_LIB_NAME          = $(PROJ_LIB_BASE).$(PROJ_LIB_SUFFIX)
