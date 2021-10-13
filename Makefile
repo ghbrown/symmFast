@@ -45,13 +45,50 @@ LIBS = $(PROJ_LIB_DIR)/$(PROJ_LONG_LIB_NAME)
 
 .PHONY: all info clean all-clean libs all-local TAGS
 
+help:
+	@printf "Usage: make [MAKE_OPTIONS] [target] (see 'make --help' for MAKE_OPTIONS)\n"
+	@printf ""
+	@awk '								\
+	{								\
+	  if ($$0 ~ /^.PHONY: [a-zA-Z\-\0-9]+$$/) {			\
+	    helpCommand = substr($$0, index($$0, ":") + 2);		\
+	    if (helpMessage) {						\
+	      printf "\033[36m%-20s\033[0m %s\n", helpCommand, helpMessage; \
+	      helpMessage = "";						\
+	    }								\
+	  } else if ($$0 ~ /^[a-zA-Z\-\0-9.]+:/) {			\
+	    helpCommand = substr($$0, 0, index($$0, ":"));		\
+	    if (helpMessage) {						\
+	      printf "\033[36m%-20s\033[0m %s\n", helpCommand, helpMessage; \
+	      helpMessage = "";						\
+	    }								\
+	  } else if ($$0 ~ /^##/) {					\
+	    if (helpMessage) {						\
+	      helpMessage = helpMessage"\n                     "substr($$0, 3); \
+	    } else {							\
+	      helpMessage = substr($$0, 3);				\
+	    }								\
+	  } else {							\
+	    if (helpMessage) {						\
+	      print "\n                     "helpMessage"\n";		\
+	    }								\
+	    helpMessage = "";						\
+	  }								\
+	}'								\
+	$(MAKEFILE_LIST)
+
+## -- commonly used --
+
+## delete all build-related files (commonly called dist-clean)
 all-clean: clean
 	@$(RM) -rf $(PROJ_BUILD_DIR)
 	@$(RM) -f $(PROJ_DIR)/make.log
 
+## delete all build files from the current arch directory
 clean:
 	@$(RM) -rf $(PROJ_OBJ_DIR) $(PROJ_LIB_DIR)
 
+## build the library
 all:
 	@mkdir -p $(PROJ_ARCH)
 	@>$(PROJ_ARCH)/make.log
