@@ -1,4 +1,10 @@
-
+*.log
+*.o
+*.d
+*.dylib
+*.so
+*.DIR
+arch-*/*
 /build/mod
 /build/obj
 /build/exe
