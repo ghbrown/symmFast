@@ -15,7 +15,7 @@ CXX = clang++
 CXXLINKER = clang++
 PROJ_CXXFLAGS += -Wall -fPIC -fvisibility=hidden -fdiagnostics-show-template-tree -fsanitize=address -g -std=gnu++17
 PROJ_CXX_DEPFLAGS = -MMD -MP -MF $(PROJ_OBJ_DIR)/$*.d
-PROJ_LINKER_FLAGS = $(PROJ_LINKER_FLAGS_BASE) -Wl,-bind_at_load -Wl,-multiply_defined,suppress -Wl,-commons,use_dylibs -Wl,-search_paths_first -Wl,-no_compact_unwind	-fsanitize=address
+PROJ_LINKER_FLAGS = $(PROJ_LINKER_FLAGS_BASE) -Wl,-bind_at_load -Wl,-commons,use_dylibs -Wl,-search_paths_first -Wl,-no_compact_unwind -fsanitize=address
 LDLIBS += -Wl,-rpath,$(PROJ_LIB_DIR) -L$(PROJ_LIB_DIR) -lstdc++
 
 SRC_STRUCTURE := $(shell find $(PROJ_SRC_DIR) -type d)
