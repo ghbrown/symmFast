@@ -32,7 +32,7 @@ DEPS := $(OBJ:.o=.d)
 
 ifeq ($(V),)
   quiet_HELP := "Use \"$(MAKE) V=1\" to see the verbose compile lines.\n"
-  quiet = @printf $(quiet_HELP)$(eval quiet_HELP:=)"  %10s %s\n" "$1$2" "$@"; $($1)
+  quiet = @printf $(quiet_HELP)$(eval quiet_HELP:=)"  %10s %s\n" "$1$2" "$(shell realpath --relative-to $(PROJ_DIR) $@)"; $($1)
 else ifeq ($(V),0)		# Same, but do not print any help
   quiet = @printf "  %10s %s\n" "$1$2" "$@"; $($1)
 else				# Show the full command line
