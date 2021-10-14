@@ -9,12 +9,8 @@ However, it is possible to construct algorithms for structured matrices that hav
 For example, [Solomonik and Demmel's 2021 paper](https://www.degruyter.com/document/doi/10.1515/cmam-2019-0075/html) propose an algebraic algorithm with bilinear complexity `n(n+1)/2` for the symmetric matrix times vector product.
 Especially in settings where multiplication is more expensive than addition, like for complex numbers, such algorithms may offer appreciable speedups over canonical structure-unaware algorithms.
 
-Such a speedups are particularly valuable since the symmetric matrix times vector multiply is one of the most important kernels in numerical linear algebra, being the basis for iterative linear and eigenpair solvers on symmetic matrices.
+Such speedups are particularly valuable since the symmetric matrix times vector multiply is one of the most important kernels in numerical linear algebra, being the basis for iterative linear and eigenpair solvers on symmetric matrices.
 
 ### This project
-Existing linear algebra libraries like [LAPACK](https://github.com/Reference-LAPACK/lapack) and various BLAS implementations have the benefit of decades of improvements and optimizations, meaning it would be unfair to compare a relativley unoptimized reference version of the fast bilinear algorithm to them.
-This repository serves not only as reference implementation for the fast bilinear algorithms and schemes for their parallelization, but also as a fair testbed between algorithms, since the naive and fast bilinear algorithms are implemented with the same level of optimizations.
-
-### Resources
-This repository uses [fypp](https://github.com/fortran-lang/stdlib) for preprocessing and generating source code, which in this case allows easy templating over the different numeric datatypes.
-The techniques for `fypp` usage follow the [Fortran Standard Library](https://github.com/fortran-lang/stdlib) almost exactly.
+Existing linear algebra libraries like [LAPACK](https://github.com/Reference-LAPACK/lapack) and various BLAS implementations have the benefit of decades of improvements and optimizations, meaning it would be unfair to compare a relatively unoptimized reference version of the fast bilinear algorithm to them.
+This repository serves not only as reference implementation for the fast bilinear algorithms and schemes for their parallelization, but also as a fair testbed between algorithms, since the canonical and fast bilinear algorithms are implemented with the same level of optimizations.
