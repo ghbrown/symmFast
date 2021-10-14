@@ -1,0 +1,42 @@
+#:include "../common.fypp"
+#:set RCI_KINDS_TYPES = REAL_KINDS_TYPES + CMPLX_KINDS_TYPES + INT_KINDS_TYPES
+
+module f_d_s
+  !fast, dense, serial
+  use stdlib_kinds, only: sp, dp, qp, &
+    int8, int16, int32, int64
+
+  implicit none
+
+  public :: f_d_s_symv
+
+  interface f_d_s_symv
+    #:for k1, t1 in RCI_KINDS_TYPES
+      module procedure f_d_s_symv_${t1[0]}$${k1}$
+    #:endfor
+  end interface f_d_s_symv
+
+contains
+
+  #:for k1, t1 in RCI_KINDS_TYPES
+    function f_d_s_symv_${t1[0]}$${k1}$(A,x) result(res)
+      ${t1}$, intent(in) :: A(:,:), x(:)
+      ${t1}$ :: res(size(x))
+      ${t1}$ :: v_i, z_ik
+      integer :: n, i, k
+      n = size(x)
+      do i=1,n
+        !compute v_i = (a_ii - sum_{j=1...n,j!=i} a_ji) x_i
+        v_i = (2*A[i,i] - sum(A[1:,i]))*x[i]
+        do k=1,(i-1)
+        end do
+        do k=(i+1),n
+        end do
+
+      end do
+    end function f_d_s_symv_${t1[0]}$${k1}$
+  #:endfor
+  
+end module f_d_s
+
+  

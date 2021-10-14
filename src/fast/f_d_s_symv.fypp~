@@ -1,0 +1,37 @@
+#:include "../common.fypp"
+#:set RCI_KINDS_TYPES = REAL_KINDS_TYPES + CMPLX_KINDS_TYPES + INT_KINDS_TYPES
+
+module c_d_s
+  !canonical, dense, serial
+  use stdlib_kinds, only: sp, dp, qp, &
+    int8, int16, int32, int64
+
+  implicit none
+
+  public :: c_d_s_symv
+
+  interface c_d_s_symv
+    #:for k1, t1 in RCI_KINDS_TYPES
+      module procedure c_d_s_symv_${t1[0]}$${k1}$
+    #:endfor
+  end interface c_d_s_symv
+
+contains
+
+  #:for k1, t1 in RCI_KINDS_TYPES
+    function c_d_s_symv_${t1[0]}$${k1}$(A,x) result(res)
+      ${t1}$, intent(in) :: A(:,:), x(:)
+      ${t1}$ :: res(size(x))
+      integer :: i
+      do i=1,size(x)
+        !add portion of scaled (sub)column to result
+        res(i:) = x(i:) + x(i)*A(i,i:) 
+        !update result with inner product of trailing row and trailing part of x
+        res(i) = x(i) + dot_product(A(i,i+1:),x(i+1:))
+      end do
+    end function c_d_s_symv_${t1[0]}$${k1}$
+  #:endfor
+  
+end module c_d_s
+
+  
