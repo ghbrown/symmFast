@@ -4,31 +4,42 @@
 
 ALL: all
 
-THIS_DIR := $(lastword $(MAKEFILE_LIST))
+THIS_DIR     := $(lastword $(MAKEFILE_LIST))
 PROJ_DIR_REL ?= $(patsubst %/,%,$(dir $(THIS_DIR)))
-PROJ_DIR ?= $(realpath $(PROJ_DIR_REL))
+PROJ_DIR     ?= $(realpath $(PROJ_DIR_REL))
+
+CXX            = mpicxx
+CXXLINKER      = mpicxx
+PROJ_CXXFLAGS += -Wall -fPIC -fvisibility=hidden -fdiagnostics-show-template-tree -fsanitize=address -g -std=gnu++17
 
 include $(PROJ_DIR)/lib/symmFast/conf/projvariables
--include $(PROJ_DIR)/lib/symmFast/conf/projrules
+include $(PROJ_DIR)/lib/symmFast/conf/projrules
 
-CXX = clang++
-CXXLINKER = clang++
-PROJ_CXXFLAGS += -Wall -fPIC -fvisibility=hidden -fdiagnostics-show-template-tree -fsanitize=address -g -std=gnu++17
-PROJ_CXX_DEPFLAGS = -MMD -MP -MF $(PROJ_OBJ_DIR)/$*.d
-PROJ_LINKER_FLAGS = $(PROJ_LINKER_FLAGS_BASE) -Wl, -bind_at_load -fsanitize=address
-#PROJ_LINKER_FLAGS = $(PROJ_LINKER_FLAGS_BASE) -Wl,-bind_at_load -Wl,-commons,use_dylibs -Wl,-search_paths_first -Wl,-no_compact_unwind -fsanitize=address
-LDLIBS += -Wl,-rpath,$(PROJ_LIB_DIR) -L$(PROJ_LIB_DIR) -lstdc++
+PETSC_VARS  := $(PETSC_DIR)/lib/petsc/conf/petscvariables
+PETSC_FOUND := $(if $(wildcard $(PETSC_VARS)),YES,)
+ifeq ($(PETSC_FOUND),YES)
+  PROJ_DEPENDENCIES   += PETSC
+  PETSC_VARIABLES      = $(PETSC_DIR)/lib/petsc/conf/petscvariables
+  PETSC_ARCH          ?= $(shell sed -n "s/^PETSC_ARCH=*//p" $(PETSC_VARIABLES_LOC))
+  PETSC_ARCH_VARIABLES = $(PETSC_DIR)/$(PETSC_ARCH)/lib/petsc/conf/petscvariables
+  PROJ_PETSC_INCLUDE   = $(shell sed -n "s/^PETSC_CC_INCLUDES = *//p" $(PETSC_ARCH_VARIABLES))
+  PROJ_PETSC_LIB       = $(shell sed -n "s/^PETSC_WITH_EXTERNAL_LIB = *//p" $(PETSC_ARCH_VARIABLES))
+endif
 
-SRC_STRUCTURE := $(shell find $(PROJ_SRC_DIR) -type d)
-SRC_TREE := $(addsuffix /*,$(SRC_STRUCTURE))
-SRC_LEAVES := $(wildcard $(SRC_TREE))
-SRC_ALL = $(filter %.cpp,$(SRC_LEAVES))
+# add the appropriate header-file inclusions and linker dependencies for each library we
+# plan to build against
+$(foreach dep,$(PROJ_DEPENDENCIES),$(eval $(call proj_add_dependency,$(dep))))
 
-INCLUDE_TREE :=	$(shell find $(PROJ_INCLUDE_DIR) -name "*.hpp")
-INCLUDES_ALL := $(filter %.hpp,$(INCLUDE_TREE))
+SRC_STRUCTURE = $(shell find $(PROJ_SRC_DIR) -type d)
+SRC_TREE      = $(addsuffix /*,$(SRC_STRUCTURE))
+SRC_LEAVES    = $(wildcard $(SRC_TREE))
+SRC_ALL       = $(filter %.cpp,$(SRC_LEAVES))
 
-OBJ := $(subst $(PROJ_SRC_DIR),$(PROJ_OBJ_DIR),$(SRC_ALL:%.cpp=%.o))
-DEPS := $(OBJ:.o=.d)
+INCLUDE_TREE  = $(shell find $(PROJ_INCLUDE_DIR) -name "*.hpp")
+INCLUDES_ALL  = $(filter %.hpp,$(INCLUDE_TREE))
+
+OBJ  = $(subst $(PROJ_SRC_DIR),$(PROJ_OBJ_DIR),$(SRC_ALL:%.cpp=%.o))
+DEPS = $(OBJ:.o=.d)
 
 ifeq ($(V),)
   quiet_HELP := "Use \"$(MAKE) V=1\" to see the verbose compile lines.\n"
@@ -39,8 +50,8 @@ else				# Show the full command line
   quiet = $($1)
 endif
 
-PROJ_COMPILE_CXX = $(call quiet,CXX) $(PROJ_CXXPPFLAGS) $(CXXPPFLAGS) $(PROJ_CXXFLAGS) $(CXXFLAGS) $(PROJ_CXX_DEPFLAGS) -c
-PROJ_LINK_CXX = $(call quiet,CXXLINKER) $(PROJ_CXXFLAGS) $(CXXFLAGS) $(PROJ_LINKER_FLAGS) $(LDFLAGS)
+PROJ_COMPILE_CXX = $(call quiet,CXX) $(PROJ_CXXPPFLAGS) $(CXXPPFLAGS) $(PROJ_CXXFLAGS) $(CXXFLAGS) $(PROJ_INCLUDE_PATHS) $(PROJ_CXX_DEPFLAGS) -c
+PROJ_LINK_CXX    = $(call quiet,CXXLINKER) $(PROJ_CXXFLAGS) $(CXXFLAGS) $(PROJ_LINKER_FLAGS) $(PROJ_LIB_PATHS) $(LDFLAGS)
 
 LIBS = $(PROJ_LIB_DIR)/$(PROJ_LONG_LIB_NAME)
 
@@ -94,18 +105,18 @@ all:
 	@mkdir -p $(PROJ_ARCH)
 	@>$(PROJ_ARCH)/make.log
 	@ln -sf $(PROJ_ARCH)/make.log make.log
-	+@$(OMAKE_SELF_PRINTDIR) PROJ_DIR=$(PROJ_DIR) PROJ_ARCH=$(PROJ_ARCH) all-local 2>&1 | tee -a ${PROJ_ARCH}/make.log
+	+@$(OMAKE_SELF_PRINTDIR) PROJ_DIR=$(PROJ_DIR) PROJ_ARCH=$(PROJ_ARCH) all-local 2>&1 | tee -a $(PROJ_ARCH)/make.log
 
 info:
 	-@echo "=========================================="
 	-@echo Starting make run on `hostname` at `date +'%a, %d %b %Y %H:%M:%S %z'`
 	-@echo Machine characteristics: `uname -a`
 	-@echo "-----------------------------------------"
-	-@echo "Using PROJ directory: ${PROJ_DIR}"
-	-@echo "Using PROJ arch:      ${PROJ_ARCH}"
+	-@echo "Using PROJ directory: $(PROJ_DIR)"
+	-@echo "Using PROJ arch:      $(PROJ_ARCH)"
 	-@echo "Using PROJ version:   $(PROJ_VERSION)"
 	-@echo "------------------------------------------"
-	-@echo "Using CXX: $(shell which $(CXX))"
+	-@echo "Using CXX:      $(shell which $(CXX))"
 	-@echo "Using CXXFLAGS: $(PROJ_CXXFLAGS) $(CXXFLAGS)"
 	-@echo "Using CXX Version: `$(CXX) --version`"
 	-@echo "------------------------------------------"
@@ -116,11 +127,11 @@ info:
 all-local: info $(LIBS)
 
 $(LIBS): $(OBJ) | $$(@D)/.DIR
-	$(PROJ_LINK_CXX) -o $@ $^ $(LDLIBS)
+	$(PROJ_LINK_CXX) -o $@ $^ $(PROJ_LIBS)
 	@ln -sf $@ $(PROJ_LIB_DIR)/$(PROJ_LIB_NAME)
 
 $(PROJ_OBJ_DIR)/%.o: $(PROJ_SRC_DIR)/%.cpp | $$(@D)/.DIR
-	$(PROJ_COMPILE_CXX) -I$(PROJ_INCLUDE_DIR) $< -o $@
+	$(PROJ_COMPILE_CXX) $< -o $@
 
 .PRECIOUS: %/.DIR
 

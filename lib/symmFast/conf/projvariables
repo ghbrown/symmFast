@@ -2,6 +2,8 @@
 OMAKE_SELF_PRINTDIR = $(MAKE) --print-directory
 SHELL               = /bin/bash
 OS                 := $(shell uname)
+MAKE_NP             = 4
+MAKE_LOAD           = 9.0
 
 ifeq ($(OS),Darwin)
   PROJ_ARCH             ?= arch-darwin-debug
@@ -14,14 +16,20 @@ else
 endif
 
 PROJ_VERSION     = 0.0.1
-PROJ_SRC_DIR     = ${PROJ_DIR}/src
-PROJ_INCLUDE_DIR = ${PROJ_DIR}/include
-PROJ_BUILD_DIR   = ${PROJ_DIR}/$(PROJ_ARCH)
+PROJ_SRC_DIR     = $(PROJ_DIR)/src
+PROJ_INCLUDE_DIR = $(PROJ_DIR)/include
+PROJ_BUILD_DIR   = $(PROJ_DIR)/$(PROJ_ARCH)
 PROJ_OBJ_DIR     = $(PROJ_BUILD_DIR)/obj
 PROJ_LIB_DIR     = $(PROJ_BUILD_DIR)/lib
 
-PROJ_LIB_BASE          = libsymmfast
-PROJ_LONG_LIB_NAME     = $(PROJ_LIB_BASE).$(PROJ_VERSION).$(PROJ_LIB_SUFFIX)
-PROJ_SHORT_LIB_NAME    = -lsymmfast
-PROJ_LIB_NAME          = $(PROJ_LIB_BASE).$(PROJ_LIB_SUFFIX)
-PROJ_LIB               = -I$(PROJ_INCLUDE_DIR) -L$(PROJ_LIB_DIR) $(PROJ_SHORT_LIB_NAME)
+PROJ_LINKER_FLAGS = $(PROJ_LINKER_FLAGS_BASE) -Wl, -bind_at_load -fsanitize=address
+PROJ_CXX_DEPFLAGS = -MMD -MP -MF $(PROJ_OBJ_DIR)/$*.d
+
+PROJ_LIB_BASE       = libsymmfast
+PROJ_LONG_LIB_NAME  = $(PROJ_LIB_BASE).$(PROJ_VERSION).$(PROJ_LIB_SUFFIX)
+PROJ_SHORT_LIB_NAME = -lsymmfast
+PROJ_LIB_NAME       = $(PROJ_LIB_BASE).$(PROJ_LIB_SUFFIX)
+
+PROJ_INCLUDE_PATHS = -I$(PROJ_INCLUDE_DIR)
+PROJ_LIB_PATHS     = -L$(PROJ_LIB_DIR)
+PROJ_LIBS          = -lstdc++
