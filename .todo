@@ -3,3 +3,5 @@
 
 [jacob]
 - implement the error handler
+- implement the sparse matrix classes
+- finish the benchmarker
