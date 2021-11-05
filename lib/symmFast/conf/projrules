@@ -1,5 +1,11 @@
 # -*- mode: makefile-gmake -*-
 
+SRC_EXAMPLES_CXX_BARE = $(patsubst %.cpp,%,$(SRC_EXAMPLES_CXX))
+SRC_EXAMPLES_CXX_OBJ  = $(patsubst %.cpp,%.o,$(SRC_EXAMPLES_CXX))
+
+$(SRC_EXAMPLES_CXX_BARE) : $(SRC_EXAMPLES_CXX)
+	$(PROJ_COMPILE_CXX_SINGLE) $< -o $@
+
 # simple macro to append a libraries dependencies to the build flags
 define proj_add_dependency
 PROJ_INCLUDE_PATHS += $(PROJ_$(1)_INCLUDE)

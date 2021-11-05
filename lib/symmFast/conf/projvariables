@@ -1,18 +1,18 @@
 # -*- mode: makefile-gmake -*-
 OMAKE_SELF_PRINTDIR = $(MAKE) --print-directory
 SHELL               = /bin/bash
-OS                 := $(shell uname)
+OS                  = $(shell uname)
 MAKE_NP             = 4
 MAKE_LOAD           = 9.0
 
 ifeq ($(OS),Darwin)
-  PROJ_ARCH             ?= arch-darwin-debug
-  PROJ_LIB_SUFFIX        = dylib
-  PROJ_LINKER_FLAGS_BASE = -shared -dynamiclib -Wl,-commons,use_dylibs
+  PROJ_ARCH            ?= arch-darwin-debug
+  PROJ_LIB_SUFFIX       = dylib
+  PROJ_LINKERFLAGS_BASE = -shared -dynamiclib -Wl,-commons,use_dylibs
 else
-  PROJ_ARCH             ?= arch-linux-debug
-  PROJ_LIB_SUFFIX        = so
-  PROJ_LINKER_FLAGS_BASE = -shared
+  PROJ_ARCH            ?= arch-linux-debug
+  PROJ_LIB_SUFFIX       = so
+  PROJ_LINKERFLAGS_BASE = -shared
 endif
 
 PROJ_VERSION     = 0.0.1
@@ -22,8 +22,15 @@ PROJ_BUILD_DIR   = $(PROJ_DIR)/$(PROJ_ARCH)
 PROJ_OBJ_DIR     = $(PROJ_BUILD_DIR)/obj
 PROJ_LIB_DIR     = $(PROJ_BUILD_DIR)/lib
 
-PROJ_LINKER_FLAGS = $(PROJ_LINKER_FLAGS_BASE) -Wl, -bind_at_load -fsanitize=address
-PROJ_CXX_DEPFLAGS = -MMD -MP -MF $(PROJ_OBJ_DIR)/$*.d
+CXX            = mpicxx
+CXXLINKER      = mpicxx
+PROJ_CXXFLAGS  = -Wall -fPIC -fvisibility=hidden -fdiagnostics-show-template-tree -fsanitize=address -g -std=gnu++17
+
+ifeq ($(V),)
+  PROJ_CXX_DEPFLAGS =
+else
+  PROJ_CXX_DEPFLAGS = -MMD -MP -MF $(PROJ_OBJ_DIR)/$*.d
+endif
 
 PROJ_LIB_BASE       = libsymmfast
 PROJ_LONG_LIB_NAME  = $(PROJ_LIB_BASE).$(PROJ_VERSION).$(PROJ_LIB_SUFFIX)
@@ -33,3 +40,14 @@ PROJ_LIB_NAME       = $(PROJ_LIB_BASE).$(PROJ_LIB_SUFFIX)
 PROJ_INCLUDE_PATHS = -I$(PROJ_INCLUDE_DIR)
 PROJ_LIB_PATHS     = -L$(PROJ_LIB_DIR)
 PROJ_LIBS          = -lstdc++
+
+PROJ_CXX_CXXPPFLAGS_ALL = $(PROJ_CXXPPFLAGS) $(CXXPPFLAGS)
+PROJ_CXX_CXXFLAGS_ALL   = $(PROJ_CXXFLAGS) $(CXXFLAGS)
+PROJ_CXXFLAGS_ALL       = $(PROJ_CXX_CXXPPFLAGS_ALL) $(PROJ_CXX_CXXFLAGS_ALL) $(PROJ_INCLUDE_PATHS)
+PROJ_COMPILE_CXX        = $(PROJ_CXXFLAGS_ALL) $(PROJ_CXX_DEPFLAGS)
+
+PROJ_ONLY_LINKERFLAGS   = $(PROJ_LINKERFLAGS_BASE) -Wl, -bind_at_load -fsanitize=address
+PROJ_LINKERFLAGS_ALL    = $(PROJ_ONLY_LINKERFLAGS) $(PROJ_LIB_PATHS) $(LDFLAGS)
+PROJ_LINK_CXX           = $(PROJ_CXXFLAGS_ALL) $(PROJ_LINKERFLAGS_ALL) $(PROJ_LIBS) $^
+PROJ_LINK_SINGLE        = $(PROJ_LIB_PATHS) $(LDFLAGS) $(PROJ_LIBS) $(PROJ_SHORT_LIB_NAME)
+PROJ_COMPILE_CXX_SINGLE = $(CXX) $(PROJ_COMPILE_CXX) $(PROJ_LINK_SINGLE)

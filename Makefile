@@ -4,31 +4,10 @@
 
 ALL: all
 
-THIS_DIR     := $(lastword $(MAKEFILE_LIST))
-PROJ_DIR_REL ?= $(patsubst %/,%,$(dir $(THIS_DIR)))
-PROJ_DIR     ?= $(realpath $(PROJ_DIR_REL))
-
-CXX            = mpicxx
-CXXLINKER      = mpicxx
-PROJ_CXXFLAGS += -Wall -fPIC -fvisibility=hidden -fdiagnostics-show-template-tree -fsanitize=address -g -std=gnu++17
-
+include projdir.mk
 include $(PROJ_DIR)/lib/symmFast/conf/projvariables
 include $(PROJ_DIR)/lib/symmFast/conf/projrules
-
-PETSC_VARS  := $(PETSC_DIR)/lib/petsc/conf/petscvariables
-PETSC_FOUND := $(if $(wildcard $(PETSC_VARS)),YES,)
-ifeq ($(PETSC_FOUND),YES)
-  PROJ_DEPENDENCIES   += PETSC
-  PETSC_VARIABLES      = $(PETSC_DIR)/lib/petsc/conf/petscvariables
-  PETSC_ARCH          ?= $(shell sed -n "s/^PETSC_ARCH=*//p" $(PETSC_VARIABLES_LOC))
-  PETSC_ARCH_VARIABLES = $(PETSC_DIR)/$(PETSC_ARCH)/lib/petsc/conf/petscvariables
-  PROJ_PETSC_INCLUDE   = $(shell sed -n "s/^PETSC_CC_INCLUDES = *//p" $(PETSC_ARCH_VARIABLES))
-  PROJ_PETSC_LIB       = $(shell sed -n "s/^PETSC_WITH_EXTERNAL_LIB = *//p" $(PETSC_ARCH_VARIABLES))
-endif
-
-# add the appropriate header-file inclusions and linker dependencies for each library we
-# plan to build against
-$(foreach dep,$(PROJ_DEPENDENCIES),$(eval $(call proj_add_dependency,$(dep))))
+include $(PROJ_DIR)/lib/symmFast/conf/projconf
 
 SRC_STRUCTURE = $(shell find $(PROJ_SRC_DIR) -type d)
 SRC_TREE      = $(addsuffix /*,$(SRC_STRUCTURE))
@@ -50,8 +29,8 @@ else				# Show the full command line
   quiet = $($1)
 endif
 
-PROJ_COMPILE_CXX = $(call quiet,CXX) $(PROJ_CXXPPFLAGS) $(CXXPPFLAGS) $(PROJ_CXXFLAGS) $(CXXFLAGS) $(PROJ_INCLUDE_PATHS) $(PROJ_CXX_DEPFLAGS) -c
-PROJ_LINK_CXX    = $(call quiet,CXXLINKER) $(PROJ_CXXFLAGS) $(CXXFLAGS) $(PROJ_LINKER_FLAGS) $(PROJ_LIB_PATHS) $(LDFLAGS)
+PROJ_COMPILE_LIB = $(call quiet,CXX) $(PROJ_COMPILE_CXX) -c $<
+PROJ_LINK_LIB    = $(call quiet,CXXLINKER) $(PROJ_LINK_CXX)
 
 LIBS = $(PROJ_LIB_DIR)/$(PROJ_LONG_LIB_NAME)
 
@@ -127,11 +106,11 @@ info:
 all-local: info $(LIBS)
 
 $(LIBS): $(OBJ) | $$(@D)/.DIR
-	$(PROJ_LINK_CXX) -o $@ $^ $(PROJ_LIBS)
+	$(PROJ_LINK_LIB) -o $@
 	@ln -sf $@ $(PROJ_LIB_DIR)/$(PROJ_LIB_NAME)
 
 $(PROJ_OBJ_DIR)/%.o: $(PROJ_SRC_DIR)/%.cpp | $$(@D)/.DIR
-	$(PROJ_COMPILE_CXX) $< -o $@
+	$(PROJ_COMPILE_LIB) -o $@
 
 .PRECIOUS: %/.DIR
 

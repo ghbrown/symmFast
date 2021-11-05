@@ -1,2 +1,5 @@
-
+[gabriel]
 - load matrix from UF Sparse Matrix Collection into repository
+
+[jacob]
+- implement the error handler
