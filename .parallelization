@@ -1,0 +1,64 @@
+
+c = A@b
+
+c_i = Sum_{k=1..n}[a_ik*(b_i + b_k)] - Sum_{k=1..n}[a_ik]*b_i
+
+a_ik*(b_i + b_k) can be thought of as a symmetric matrix Z
+
+computing c_i is then the column (or row) sum of a symmetric matrix (Z)
+    plus a column (or row) sum of another symmetric matrix (A) times
+    an element of b
+
+A = * * * * * *
+      * * * * *
+        * * * *
+          * * *
+            * *
+              *
+
+1D MESH (COLUMN AGGLOMERATION)
+
+Each element a_ik will contribute to two entries of c
+c_i += a_ik*(b_i + b_k)
+and 2 entries of the sum of A's columns/rows
+a_sum_i += a_ik
+For example, the "o" element below could contribute as
+c_2 += a_23*(b_2 + b_3)
+c_3 += a_23*(b_2 + b_3)
+a_sum_2 += a_23
+a_sum_3 += a_23
+*NOTE: for i==j, only contribute once*
+Not sure if/how this part can be BLAS-ified
+
+  * *|* *|* *
+    *|o *|* *
+     |* *|* *
+     |  *|* *
+     |   |* *
+     |   |  *
+
+Then sum all on-rank c o get main contribution to actual c
+Then add low order term as c -= inner(a_sum,b) (not sure where to fit this in)
+*NOTE: This low order term containing the column/row sums is the thing that gets
+    amortized*
+
+Issues:
+- load imbalance (latter ranks do much more work)
+  -(could allocate such that each rank gets same number of elements
+      rather than same number of columns?)
+- difficult to communicate b efficiently, some ranks need few elements,
+      some all elements
+
+2D MESH
+  * *|* *|* *
+    *|o *|* *
+  __________
+     |* *|* *
+     |  *|* *
+  __________
+     |   |* *
+     |   |  *
+
+similar story, but here we should not have the on rank c vectors be full length
+    rather keep track of only the elements to be updated and their indices
+    COO style (even for dense)
