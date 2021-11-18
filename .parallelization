@@ -24,7 +24,7 @@ and 2 entries of the sum of A's columns/rows
 a_sum_i += a_ik
 For example, the "o" element below could contribute as
 c_2 += a_23*(b_2 + b_3)
-c_3 += a_23*(b_2 + b_3)
+c_3 += a_23*(b_2 + b_3) (obviously we don't compute this twice)
 a_sum_2 += a_23
 a_sum_3 += a_23
 *NOTE: for i==j, only contribute once*
