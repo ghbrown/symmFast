@@ -30,17 +30,24 @@
 #define sflikely(pred)   __builtin_expect(!!(pred),1)
 
 // todo implement the detail:: parts
-#ifdef SF_DEBUG
-#  define SFCHECK(expr) do {						\
-    const auto errc = expr;						\
+#define SFCHECK(...) do {						\
+    const auto errc = __VA_ARGS__;					\
     if (sfunlikely(detail::sf_check_error(errc))) {			\
-      return detail::error_handler(__FILE__,SF_FUNCTION_NAME,		\
-				   __LINE__,SF_COMM_WORLD,errc);	\
+      return detail::error_handler(					\
+	__FILE__,SF_FUNCTION_NAME,__LINE__,SF_COMM_SELF,errc		\
+      );								\
     }									\
   } while (0)
-#else
-#  define SFCHECK(expr)	do { const auto SF_UNUSED errc = expr; } while (0)
-#endif
+
+#define SFCHECKABORT(...) do {						\
+    const auto errc = __VA_ARGS__;					\
+    if (sfunlikely(detail::sf_check_error(errc))) {			\
+      auto sferrc = detail::error_handler(				\
+	__FILE__,SF_FUNCTION_NAME,__LINE__,SF_COMM_SELF,errc		\
+      );								\
+      MPI_Abort(SF_COMM_SELF,static_cast<int>(sferrc));			\
+    }									\
+  } while (0)
 
 #include <mpi.h>
 
@@ -54,6 +61,16 @@ SF_EXTERN MPI_Comm SF_COMM_SELF;
 
 SF_EXTERN sf_error_t initialize(int,char*[]);
 SF_EXTERN sf_error_t finalize();
+
+namespace detail
+{
+
+template <typename T>
+SF_STATIC_INLINE constexpr bool sf_check_error(T err) noexcept { return !!err; }
+
+SF_EXTERN sf_error_t error_handler(const char*,const char*,int,MPI_Comm,sf_error_t);
+
+} // namespace detail
 
 } // namespace sf
 

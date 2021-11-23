@@ -1,67 +1,96 @@
 #ifndef SYMMFAST_LINALG_MATRIX_HPP
 #define SYMMFAST_LINALG_MATRIX_HPP
 
-#include <type_traits>
+#include <sys/sys.hpp>
+#include <linalg/linear_operator.hpp>
+
+#include <vector>
 
 namespace sf
 {
 
-// abstract base class from which all other linear algebra types will derive from. a
-// linear_operator has both a width (dimension of the input space) and a height (dimension of
-// the output space)
-class linear_operator
-{
-  using size_type = std::size_t;
-
-  constexpr linear_operator(size_type h, size_type w = 1) noexcept : _height(h), _width(w) { }
-
-  // apply this linear operator, resulting in another linear operator
-  ~virtual linear_operator& apply(const linear_operator&) noexcept const = 0;
-
-  ~virtual linear_operator() { }
-
-protected:
-  size_type _height;
-  size_type _width;
-};
-
 // a simple matrix abstract base class
 template <typename T>
-class matrix : public linear_operator
+class matrix : public linear_operator<T>
 {
-  static_assert(std::is_floating_point<T>::value,"");
 public:
-  using value_type = T;
-  using linear_operator::size_type;
+  SF_LINEAR_OPERATOR_HEADER(linop,T);
 
-  // square matrix constructor
-  constexpr matrix(size_type h) noexcept : linear_operator(h,h) { }
+  // constructor
+  matrix(MPI_Comm comm = SF_COMM_SELF, size_type hl = 0, size_type wl = 0, size_type hg = -1, size_type wg = -1) noexcept
+    : linop(comm,hl,wl,hg,wg)
+  { }
 
-  // generic matrix constructor
-  constexpr matrix(size_type h, size_type w) noexcept : linear_operator(h,w) { }
-
-  virtual ~matrix() { }
-
-  // getter
-  virtual const value_type& operator()(size_type,size_type) const noexcept = 0;
-  // setter
-  virtual value_type& operator()(size_type,size_type) noexcept = 0;
+  virtual ~matrix() noexcept = default;
 
   // construct the matrix
   virtual sf_error_t assemble() noexcept = 0;
 };
 
-template <typename T>
-class dense_matrix : public matrix<T>
-{
-  // TODO
-};
+// template <typename T>
+// class dense_matrix : public matrix<T>
+// {
+// public:
+//   SF_LINEAR_OPERATOR_HEADER(linop,T);
+//   using base_type = matrix<T>;
+
+//   constexpr dense_matrix(MPI_Comm comm = SF_COMM_SELF, size_type h = 0, size_type w = 0) noexcept
+//     : base_type(comm,h,w), data_(h*w)
+//   { }
+
+//   // getter
+//   const_reference_type operator()(size_type i, size_type j) const noexcept final
+//   {
+//     return data_[i*this->width_+j];
+//   }
+
+//   reference_type operator()(size_type i, size_type j) noexcept final
+//   {
+//     return data_[i*this->width_+j];
+//   }
+
+//   virtual ~dense_matrix() noexcept { }
+
+// private:
+//   std::vector<value_type> data_;
+// };
 
 template <typename T>
 class sparse_matrix : public matrix<T>
 {
-  // TODO
+public:
+  SF_LINEAR_OPERATOR_HEADER(linop,T);
+  using base_type = matrix<T>;
+
+  sparse_matrix(MPI_Comm comm = SF_COMM_SELF, size_type hl = 0, size_type wl = 0, size_type hg = -1, size_type wg = -1) noexcept
+    : base_type(comm,hl,wl,hg,wg)
+  { }
+
+  virtual ~sparse_matrix() noexcept;
+
+  // construct the matrix
+  virtual sf_error_t assemble() noexcept override;
+
+  virtual linop& apply(const linop&) noexcept override;
 };
+
+template <typename T>
+inline sparse_matrix<T>::~sparse_matrix() noexcept
+{
+
+}
+
+template <typename T>
+inline sf_error_t sparse_matrix<T>::assemble() noexcept
+{
+  return 0;
+}
+
+template <typename T>
+inline linear_operator<T>& sparse_matrix<T>::apply(const linear_operator<T>&) noexcept
+{
+  return *this;
+}
 
 }
 
