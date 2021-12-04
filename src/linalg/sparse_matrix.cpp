@@ -3,6 +3,4 @@
 namespace sf
 {
 
-template class sparse_matrix<double>;
-
 } // namespace sf

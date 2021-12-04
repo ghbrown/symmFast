@@ -30,4 +30,6 @@ petsc_matrix::linear_operator& petsc_matrix::apply(const linear_operator &other)
   return *this;
 }
 
+template class sparse_matrix<PetscScalar>;
+
 } // namespace sf

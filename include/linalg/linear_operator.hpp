@@ -11,7 +11,7 @@ namespace sf
 // linear_operator has both a width (dimension of the input space) and a height (dimension of
 // the output space)
 template <typename T>
-class linear_operator
+class SF_VISIBILITY_EXTERNAL linear_operator
 {
   static_assert(std::is_floating_point<T>::value,"");
 public:
@@ -42,18 +42,18 @@ protected:
 
 } // namespace sf
 
-#define SF_LINEAR_OPERATOR_HEADER(base_name,T)		\
-  using base_name = sf::linear_operator<T>;		\
-  /* values */						\
-  using base_name::comm_;				\
-  using base_name::heightl_;				\
-  using base_name::heightg_;				\
-  using base_name::widthl_;				\
-  using base_name::widthg_;				\
-  /* typedefs */					\
-  using typename base_name::value_type;			\
-  using typename base_name::reference_type;		\
-  using typename base_name::const_reference_type;	\
+#define SF_LINEAR_OPERATOR_HEADER(base_name,base_class_T)	\
+  using base_name = base_class_T;				\
+  /* values */							\
+  using base_name::comm_;					\
+  using base_name::heightl_;					\
+  using base_name::heightg_;					\
+  using base_name::widthl_;					\
+  using base_name::widthg_;					\
+  /* typedefs */						\
+  using typename base_name::value_type;				\
+  using typename base_name::reference_type;			\
+  using typename base_name::const_reference_type;		\
   using typename base_name::size_type
 
 #endif // SYMMFAST_LINALG_LINEAR_OPERATOR_HPP

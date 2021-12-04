@@ -3,6 +3,7 @@
 
 #include "linear_operator.hpp"
 #include "matrix.hpp"
+#include "sparse_matrix.hpp"
 #include "petsc.hpp"
 
 #endif // SYMMFAST_LINALG_HPP

@@ -26,11 +26,7 @@ CXX            = mpicxx
 CXXLINKER      = mpicxx
 PROJ_CXXFLAGS  = -Wall -fPIC -fvisibility=hidden -fdiagnostics-show-template-tree -fsanitize=address -g -std=gnu++17
 
-ifeq ($(V),)
-  PROJ_CXX_DEPFLAGS =
-else
-  PROJ_CXX_DEPFLAGS = -MMD -MP -MF $(PROJ_OBJ_DIR)/$*.d
-endif
+PROJ_CXX_DEPFLAGS = -MMD -MP -MF $(PROJ_OBJ_DIR)/$*.d
 
 PROJ_LIB_BASE       = libsymmfast
 PROJ_LONG_LIB_NAME  = $(PROJ_LIB_BASE).$(PROJ_VERSION).$(PROJ_LIB_SUFFIX)
