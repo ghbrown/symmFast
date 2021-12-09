@@ -20,6 +20,7 @@ sf_error_t petsc_matrix::assemble() noexcept
   SFCHECK(initialize_());
   SFCHECK(MatSetType(mat_,type_));
   SFCHECK(MatSetFromOptions(mat_));
+  SFCHECK(MatSetUp(mat_));
   SFCHECK(MatAssemblyBegin(mat_,MAT_FINAL_ASSEMBLY));
   SFCHECK(MatAssemblyEnd(mat_,MAT_FINAL_ASSEMBLY));
   return 0;
