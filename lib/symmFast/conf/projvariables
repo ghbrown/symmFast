@@ -8,10 +8,12 @@ MAKE_LOAD           = 9.0
 ifeq ($(OS),Darwin)
   PROJ_ARCH            ?= arch-darwin-debug
   PROJ_LIB_SUFFIX       = dylib
+  PROJ_CXX_FLAGS_BASE   = -fsanitize=address
   PROJ_LINKERFLAGS_BASE = -shared -dynamiclib -Wl,-commons,use_dylibs -Wl,-bind_at_load -fsanitize=address
 else
   PROJ_ARCH            ?= arch-linux-debug
   PROJ_LIB_SUFFIX       = so
+  PROJ_CXX_FLAGS_BASE   =
   PROJ_LINKERFLAGS_BASE = -shared
 endif
 
@@ -24,7 +26,7 @@ PROJ_LIB_DIR     = $(PROJ_BUILD_DIR)/lib
 
 CXX            = mpicxx
 CXXLINKER      = mpicxx
-PROJ_CXXFLAGS  = -Wall -fPIC -fvisibility=hidden -fdiagnostics-show-template-tree -fsanitize=address -g -std=gnu++17
+PROJ_CXXFLAGS  = $(PROJ_CXX_FLAGS_BASE) -Wall -fPIC -fvisibility=hidden -fdiagnostics-show-template-tree -g -std=gnu++17
 
 PROJ_CXX_DEPFLAGS = -MMD -MP -MF $(PROJ_OBJ_DIR)/$*.d
 
