@@ -4,7 +4,7 @@ PETSC_FOUND := $(if $(wildcard $(PETSC_VARS)),YES,)
 ifeq ($(PETSC_FOUND),YES)
   PROJ_DEPENDENCIES   += PETSC
   PETSC_VARIABLES      = $(PETSC_DIR)/lib/petsc/conf/petscvariables
-  PETSC_ARCH          ?= $(shell sed -n "s/^PETSC_ARCH=*//p" $(PETSC_VARIABLES_LOC))
+  PETSC_ARCH          ?= $(shell sed -n "s/^PETSC_ARCH=*//p" $(PETSC_VARIABLES))
   PETSC_ARCH_VARIABLES = $(PETSC_DIR)/$(PETSC_ARCH)/lib/petsc/conf/petscvariables
   PROJ_PETSC_INCLUDE   = $(shell sed -n "s/^PETSC_CC_INCLUDES = *//p" $(PETSC_ARCH_VARIABLES))
   PROJ_PETSC_LIB       = $(shell sed -n "s/^PETSC_WITH_EXTERNAL_LIB = *//p" $(PETSC_ARCH_VARIABLES))
