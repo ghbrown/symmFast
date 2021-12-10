@@ -6,11 +6,13 @@
 namespace sf
 {
 
+template <typename T> class SF_VISIBILITY_EXTERNAL sparse_matrix;
+
 template <typename T>
-class SF_VISIBILITY_EXTERNAL sparse_matrix : public matrix<T>
+class sparse_matrix : public detail::matrix_base<T>
 {
 public:
-  SF_LINEAR_OPERATOR_HEADER(base_type,matrix<T>);
+  SF_LINEAR_OPERATOR_HEADER(base_type,detail::matrix_base<T>);
 
   sparse_matrix(MPI_Comm comm = SF_COMM_SELF, size_type hl = 0, size_type wl = 0, size_type hg = -1, size_type wg = -1) noexcept
     : base_type(comm,hl,wl,hg,wg)

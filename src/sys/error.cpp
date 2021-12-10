@@ -20,7 +20,7 @@ class backtrace
 {
 private:
   using entry_type = std::tuple<std::string,std::string,int>;
-  using stack_type = std::queue<const entry_type>;
+  using stack_type = std::queue<entry_type>;
 
   const sf_error_t error_;
   stack_type stack_;

@@ -7,14 +7,14 @@
 namespace sf
 {
 
-extern template class matrix<PetscScalar>;
+extern template class detail::matrix_base<PetscScalar>;
 
 class SF_VISIBILITY_EXTERNAL petsc_matrix;
 
-class petsc_matrix : public matrix<PetscScalar>
+class petsc_matrix : public detail::matrix_base<PetscScalar>
 {
 public:
-  SF_LINEAR_OPERATOR_HEADER(base_type,matrix<PetscScalar>);
+  SF_LINEAR_OPERATOR_HEADER(base_type,detail::matrix_base<PetscScalar>);
 
   petsc_matrix(MPI_Comm comm = SF_COMM_SELF, MatType type = MATAIJ, size_type hl = 0, size_type wl = 0, size_type hg = -1, size_type wg = -1) noexcept
     : base_type(comm,hl,wl,hg,wg), mat_(nullptr), type_(type)

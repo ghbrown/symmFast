@@ -35,6 +35,6 @@ sf_error_t petsc_matrix::assemble() noexcept
 }
 
 
-template class matrix<PetscScalar>;
+template class detail::matrix_base<PetscScalar>;
 
 } // namespace sf
