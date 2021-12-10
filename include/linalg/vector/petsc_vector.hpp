@@ -20,6 +20,7 @@ public:
 
   ~petsc_vector() noexcept { if (vec_) SFCHECKABORT(VecDestroy(&vec_)); }
 
+  sf_error_t set_random() noexcept;
   sf_error_t assemble() noexcept;
 
 private:

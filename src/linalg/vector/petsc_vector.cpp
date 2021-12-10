@@ -12,6 +12,13 @@ sf_error_t petsc_vector::initialize_() noexcept
   return 0;
 }
 
+sf_error_t petsc_vector::set_random() noexcept
+{
+  SFCHECK(initialize_());
+  SFCHECK(VecSetRandom(vec_,nullptr));
+  return 0;
+}
+
 sf_error_t petsc_vector::assemble() noexcept
 {
   SFCHECK(initialize_());

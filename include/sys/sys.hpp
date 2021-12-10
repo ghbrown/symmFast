@@ -29,12 +29,11 @@
 #define sfunlikely(pred) __builtin_expect(!!(pred),0)
 #define sflikely(pred)   __builtin_expect(!!(pred),1)
 
-// todo implement the detail:: parts
 #define SFCHECK(...) do {						\
     const auto errc = __VA_ARGS__;					\
     if (sfunlikely(detail::sf_check_error(errc))) {			\
       return detail::error_handler(					\
-	__FILE__,SF_FUNCTION_NAME,__LINE__,SF_COMM_SELF,errc		\
+	__FILE__,__func__,__LINE__,SF_COMM_SELF,errc			\
       );								\
     }									\
   } while (0)
@@ -43,7 +42,7 @@
     const auto errc = __VA_ARGS__;					\
     if (sfunlikely(detail::sf_check_error(errc))) {			\
       auto sferrc = detail::error_handler(				\
-	__FILE__,SF_FUNCTION_NAME,__LINE__,SF_COMM_SELF,errc		\
+	__FILE__,__func__,__LINE__,SF_COMM_SELF,errc			\
       );								\
       MPI_Abort(SF_COMM_SELF,static_cast<int>(sferrc));			\
     }									\

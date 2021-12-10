@@ -16,6 +16,8 @@ namespace detail
 #define SF_ERROR_INITIAL -1
 #define SF_ERROR_REPEAT  -2
 
+static constexpr const char error_bar[] = "-----------------------------------------------------------------------------------";
+
 class backtrace
 {
 private:
@@ -28,17 +30,20 @@ private:
 public:
   backtrace(sf_error_t errc) noexcept : error_(errc) { }
 
+  const entry_type& last() const noexcept { return stack_.back(); }
+
+  sf_error_t error_code() const noexcept  { return error_;        }
+
   void push(std::string file, std::string func, int line) noexcept
   {
     stack_.push(std::make_tuple(std::move(file),std::move(func),line));
   }
 
-  const std::string& last_function() const noexcept { return std::get<1>(stack_.back()); }
-
   void unwind() noexcept
   {
     int i = 0;
-    std::cout<<"SymmFast error "<<error_<<std::endl;
+    std::cout<<"SymmFast error "<<error_bar<<std::endl;
+    std::cout<<"Error code "<<error_<<std::endl;
     while (!stack_.empty()) {
       int         line;
       std::string func,file;
@@ -55,14 +60,14 @@ sf_error_t error_handler(const char *file, const char *func, int line, MPI_Comm 
   static backtrace bt(errc);
 
   bt.push(file,func,line);
-  if (bt.last_function() == "main") {
+  if (std::get<1>(bt.last()) == "main") {
     // char errorstr[MPI_MAX_ERROR_STRING];
     // int  resultlen; // unused
 
     // MPI_Error_string(errc,static_cast<char*>(errorstr),&resultlen);
     bt.unwind();
-    // MPI_Abort(comm,ret); // noreturn
-    // __builtin_unreachable();
+    MPI_Abort(comm,bt.error_code()); // noreturn
+    __builtin_unreachable();
   }
   return SF_ERROR_REPEAT;
 }

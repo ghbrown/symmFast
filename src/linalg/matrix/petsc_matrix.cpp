@@ -19,7 +19,7 @@ sf_error_t petsc_matrix::initialize_() noexcept
   return 0;
 }
 
-sf_error_t petsc_matrix::setrandom() noexcept
+sf_error_t petsc_matrix::set_random() noexcept
 {
   SFCHECK(initialize_());
   SFCHECK(MatSetRandom(mat_,nullptr));

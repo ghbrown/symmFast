@@ -10,8 +10,12 @@ int main(int argc, char *argv[])
 
   {
     auto pmat = petsc_matrix(comm,MATDENSE);
-    SFCHECK(pmat.setrandom());
+    SFCHECK(pmat.set_random());
     SFCHECK(pmat.assemble());
+
+    auto pvec = petsc_vector(comm);
+    SFCHECK(pvec.set_random());
+    SFCHECK(pvec.assemble());
   }
 
   SFCHECK(finalize());

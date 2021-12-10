@@ -20,9 +20,9 @@ public:
     : base_type(comm,hl,wl,hg,wg), mat_(nullptr), type_(type)
   { }
 
-  virtual ~petsc_matrix() noexcept;
-  virtual sf_error_t setrandom() noexcept;
-  virtual sf_error_t assemble() noexcept;
+  ~petsc_matrix() noexcept;
+  sf_error_t set_random() noexcept;
+  sf_error_t assemble() noexcept;
 
 private:
   Mat     mat_;
