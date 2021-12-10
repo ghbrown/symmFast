@@ -1,5 +1,5 @@
 #include <sys/sys.hpp>
-#include <linalg/petsc.hpp>
+#include <linalg/matrix/petsc.hpp>
 
 namespace sf
 {

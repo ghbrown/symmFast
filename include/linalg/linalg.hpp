@@ -1,9 +1,9 @@
 #ifndef SYMMFAST_LINALG_HPP
 #define SYMMFAST_LINALG_HPP
 
-#include "linear_operator.hpp"
-#include "matrix.hpp"
-#include "sparse_matrix.hpp"
-#include "petsc.hpp"
+#include <linalg/linear_operator.hpp>
+#include <linalg/matrix/matrix_core.hpp>
+#include <linalg/matrix/sparse_matrix.hpp>
+#include <linalg/matrix/petsc.hpp>
 
 #endif // SYMMFAST_LINALG_HPP

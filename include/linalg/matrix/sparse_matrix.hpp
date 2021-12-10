@@ -1,7 +1,7 @@
-#ifndef SF_LINALG_SPARSE_MATRIX_HPP
-#define SF_LINALG_SPARSE_MATRIX_HPP
+#ifndef SF_LINALG_MATRIX_SPARSE_MATRIX_HPP
+#define SF_LINALG_MATRIX_SPARSE_MATRIX_HPP
 
-#include <linalg/matrix.hpp>
+#include <linalg/matrix/matrix_core.hpp>
 
 namespace sf
 {
@@ -19,7 +19,6 @@ public:
   virtual ~sparse_matrix() noexcept = default;
   // construct the matrix
   virtual sf_error_t assemble() noexcept;
-  virtual linear_operator<T>& apply(const linear_operator<T>&) noexcept;
 };
 
 template <typename T>
@@ -28,12 +27,6 @@ sf_error_t sparse_matrix<T>::assemble() noexcept
   return 0;
 }
 
-template <typename T>
-linear_operator<T>& sparse_matrix<T>::apply(const linear_operator<T>&) noexcept
-{
-  return *this;
-}
-
 }  // namespace sf
 
-#endif // SF_LINALG_SPARSE_MATRIX_HPP
+#endif // SF_LINALG_MATRIX_SPARSE_MATRIX_HPP

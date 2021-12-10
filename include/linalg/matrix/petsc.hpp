@@ -1,26 +1,28 @@
-#ifndef SYMMFAST_LINALG_PETSC_HPP
-#define SYMMFAST_LINALG_PETSC_HPP
+#ifndef SYMMFAST_LINALG_MATRIX_PETSC_HPP
+#define SYMMFAST_LINALG_MATRIX_PETSC_HPP
 
-#include <linalg/sparse_matrix.hpp>
+#include <linalg/matrix/matrix_core.hpp>
 #include <petscmat.h>
 
 namespace sf
 {
 
-extern template class sparse_matrix<PetscScalar>;
+extern template class matrix<PetscScalar>;
 
-class SF_VISIBILITY_EXTERNAL petsc_matrix : public sparse_matrix<PetscScalar>
+class SF_VISIBILITY_EXTERNAL petsc_matrix;
+
+class petsc_matrix : public matrix<PetscScalar>
 {
 public:
-  SF_LINEAR_OPERATOR_HEADER(base_type,sparse_matrix<PetscScalar>);
+  SF_LINEAR_OPERATOR_HEADER(base_type,matrix<PetscScalar>);
 
   petsc_matrix(MPI_Comm comm = SF_COMM_SELF, MatType type = MATAIJ, size_type hl = 0, size_type wl = 0, size_type hg = -1, size_type wg = -1) noexcept
     : base_type(comm,hl,wl,hg,wg), mat_(nullptr), type_(type)
   { }
 
   virtual ~petsc_matrix() noexcept;
+  virtual sf_error_t setrandom() noexcept;
   virtual sf_error_t assemble() noexcept;
-  virtual linear_operator<PetscScalar>& apply(const linear_operator<PetscScalar>&) noexcept;
 
 private:
   Mat     mat_;
@@ -31,4 +33,4 @@ private:
 
 } // namespace sf
 
-#endif // SYMMFAST_LINALG_PETSC_HPP
+#endif // SYMMFAST_LINALG_MAT_PETSC_HPP

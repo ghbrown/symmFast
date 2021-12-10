@@ -29,9 +29,6 @@ public:
   // assemble this linear operator and make it ready for use
   virtual sf_error_t assemble() noexcept = 0;
 
-  // apply this linear operator, resulting in another linear operator
-  virtual linear_operator& apply(const linear_operator&) noexcept = 0;
-
 protected:
   MPI_Comm  comm_;
   size_type heightl_;

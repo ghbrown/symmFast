@@ -1,4 +1,5 @@
 #include <symmfast.hpp>
+#include <iostream>
 
 using namespace sf;
 
@@ -9,10 +10,11 @@ int main(int argc, char *argv[])
 
   {
     auto pmat = petsc_matrix(comm,MATDENSE);
-    pmat.setrandom();
+    SFCHECK(pmat.setrandom());
     SFCHECK(pmat.assemble());
   }
 
   SFCHECK(finalize());
+  std::cout<<"success\n";
   return 0;
 }
