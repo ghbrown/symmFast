@@ -8,7 +8,7 @@ MAKE_LOAD           = 9.0
 ifeq ($(OS),Darwin)
   PROJ_ARCH            ?= arch-darwin-debug
   PROJ_LIB_SUFFIX       = dylib
-  PROJ_LINKERFLAGS_BASE = -shared -dynamiclib -Wl,-commons,use_dylibs
+  PROJ_LINKERFLAGS_BASE = -shared -dynamiclib -Wl,-commons,use_dylibs -Wl,-bind_at_load -fsanitize=address
 else
   PROJ_ARCH            ?= arch-linux-debug
   PROJ_LIB_SUFFIX       = so
@@ -42,7 +42,7 @@ PROJ_CXX_CXXFLAGS_ALL   = $(PROJ_CXXFLAGS) $(CXXFLAGS)
 PROJ_CXXFLAGS_ALL       = $(PROJ_CXX_CXXPPFLAGS_ALL) $(PROJ_CXX_CXXFLAGS_ALL) $(PROJ_INCLUDE_PATHS)
 PROJ_COMPILE_CXX        = $(PROJ_CXXFLAGS_ALL) $(PROJ_CXX_DEPFLAGS)
 
-PROJ_ONLY_LINKERFLAGS   = $(PROJ_LINKERFLAGS_BASE) -Wl,-bind_at_load -fsanitize=address
+PROJ_ONLY_LINKERFLAGS   = $(PROJ_LINKERFLAGS_BASE)
 PROJ_LINKERFLAGS_ALL    = $(PROJ_ONLY_LINKERFLAGS) $(PROJ_LIB_PATHS) $(LDFLAGS)
 PROJ_LINK_CXX           = $(PROJ_CXXFLAGS_ALL) $(PROJ_LINKERFLAGS_ALL) $(PROJ_LIBS) $^
 PROJ_LINK_SINGLE        = $(PROJ_LIB_PATHS) $(LDFLAGS) $(PROJ_LIBS) $(PROJ_SHORT_LIB_NAME)

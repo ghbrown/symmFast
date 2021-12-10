@@ -14,16 +14,17 @@ class petsc_vector : public detail::vector_base<PetscScalar>
 public:
   SF_LINEAR_OPERATOR_HEADER(base_type,detail::vector_base<PetscScalar>);
 
-  petsc_vector(MPI_Comm comm = SF_COMM_SELF, size_type ll = 0, size_type lg = -1) noexcept
-    : base_type(comm,ll,lg)
+  petsc_vector(MPI_Comm comm = SF_COMM_SELF, VecType type = VECSTANDARD, size_type ll = 0, size_type lg = -1) noexcept
+    : base_type(comm,ll,lg),type_(type)
   { }
 
-  ~petsc_vector() noexcept { if (v_) SFCHECKABORT(VecDestroy(&v_)); }
+  ~petsc_vector() noexcept { if (vec_) SFCHECKABORT(VecDestroy(&vec_)); }
 
   sf_error_t assemble() noexcept;
 
 private:
-  Vec v_;
+  Vec     vec_;
+  VecType type_;
 
   sf_error_t initialize_() noexcept;
 };
