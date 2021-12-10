@@ -23,7 +23,7 @@ private:
   using stack_type = std::queue<entry_type>;
 
   const sf_error_t error_;
-  stack_type stack_;
+  stack_type       stack_;
 
 public:
   backtrace(sf_error_t errc) noexcept : error_(errc) { }

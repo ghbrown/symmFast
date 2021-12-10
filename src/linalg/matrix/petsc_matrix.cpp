@@ -1,4 +1,4 @@
-#include <linalg/matrix/petsc.hpp>
+#include <linalg/matrix/petsc_matrix.hpp>
 
 namespace sf
 {

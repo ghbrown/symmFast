@@ -1,5 +1,5 @@
-#ifndef SYMMFAST_LINALG_MATRIX_PETSC_HPP
-#define SYMMFAST_LINALG_MATRIX_PETSC_HPP
+#ifndef SYMMFAST_LINALG_MATRIX_PETSC_MATRIX_HPP
+#define SYMMFAST_LINALG_MATRIX_PETSC_MATRIX_HPP
 
 #include <linalg/matrix/matrix_core.hpp>
 #include <petscmat.h>
