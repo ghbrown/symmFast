@@ -48,6 +48,13 @@
     }									\
   } while (0)
 
+// TODO flesh this out
+#define SFASSERT(cond,comm,...) do {					\
+    if (sfunlikely(!(cond)))	{					\
+      return detail::error_handler(__FILE__,__func__,__LINE__,comm,1);	\
+    }									\
+  } while (0)
+
 #include <mpi.h>
 
 namespace sf
@@ -58,8 +65,8 @@ using sf_error_t = int;
 SF_EXTERN MPI_Comm SF_COMM_WORLD;
 SF_EXTERN MPI_Comm SF_COMM_SELF;
 
-SF_EXTERN sf_error_t initialize(int,char*[]);
-SF_EXTERN sf_error_t finalize();
+SF_EXTERN sf_error_t initialize(int,char*[]) noexcept;
+SF_EXTERN sf_error_t finalize() noexcept;
 
 namespace detail
 {

@@ -20,8 +20,8 @@ class vector_base : public linear_operator<T>
 public:
   SF_LINEAR_OPERATOR_HEADER(base_type,linear_operator<T>);
 
-  vector_base(MPI_Comm comm = SF_COMM_SELF, size_type ll = 0, size_type lg = -1) noexcept
-    : base_type(comm,ll,1,lg,1)
+  vector_base(MPI_Comm comm = SF_COMM_SELF, size_type len_local = 0, size_type len_global = -1) noexcept
+    : base_type(comm,len_local,1,len_global,1)
   { }
 
   virtual ~vector_base() noexcept = default;

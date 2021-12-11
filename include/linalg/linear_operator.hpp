@@ -27,7 +27,15 @@ public:
   virtual ~linear_operator() noexcept = default;
 
   // assemble this linear operator and make it ready for use
-  virtual sf_error_t assemble() noexcept = 0;
+  virtual sf_error_t assemble()        noexcept = 0;
+  virtual sf_error_t resize(size_type) noexcept = 0;
+  virtual sf_error_t resize(size_type,size_type) noexcept = 0;
+
+  bool      assembled()     const noexcept { return assembled_; }
+  size_type local_height()  const noexcept { return heightl_;   }
+  size_type global_height() const noexcept { return heightg_;   }
+  size_type local_width()   const noexcept { return widthl_;    }
+  size_type global_width()  const noexcept { return widthg_;    }
 
 protected:
   MPI_Comm  comm_;
@@ -35,6 +43,7 @@ protected:
   size_type heightg_;
   size_type widthl_;
   size_type widthg_;
+  bool      assembled_ = false;
 };
 
 } // namespace sf

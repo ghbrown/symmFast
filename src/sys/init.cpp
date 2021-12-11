@@ -7,7 +7,7 @@ namespace sf
 MPI_Comm SF_COMM_WORLD = MPI_COMM_NULL;
 MPI_Comm SF_COMM_SELF  = MPI_COMM_NULL;
 
-sf_error_t initialize(int argc, char *argv[])
+sf_error_t initialize(int argc, char *argv[]) noexcept
 {
   SFCHECK(PetscInitialize(&argc,&argv,nullptr,nullptr));
   SF_COMM_SELF  = PETSC_COMM_SELF;
@@ -15,7 +15,7 @@ sf_error_t initialize(int argc, char *argv[])
   return 0;
 }
 
-sf_error_t finalize()
+sf_error_t finalize() noexcept
 {
   SFCHECK(PetscFinalize());
   SF_COMM_SELF  = MPI_COMM_NULL;

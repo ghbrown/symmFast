@@ -3,6 +3,7 @@
 
 #include <sys/sys.hpp>
 #include <linalg/linear_operator.hpp>
+#include <linalg/vector/vector_core.hpp>
 
 namespace sf
 {
@@ -25,7 +26,10 @@ public:
   { }
 
   virtual ~matrix_base() noexcept = default;
-  virtual sf_error_t assemble() noexcept = 0;
+
+  virtual sf_error_t set_random() noexcept = 0;
+
+  virtual sf_error_t apply(const vector_base<T>&,vector_base<T>&) const noexcept = 0;
 };
 
 } // namespace detail
