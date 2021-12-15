@@ -122,11 +122,13 @@ private:
 
   auto& operator()(PetscInt i, PetscInt j) noexcept
   {
+    if (on_diagonal_() && i < j) SETERRABORT(PETSC_COMM_SELF,PETSC_ERR_LIB,"Trying to access lower triangular portion");
     return data_[order_ == DataOrder::ROW_MAJOR ? ncols_sum_(i)+j : nrows_sum_(j)+i];
   }
 
   const auto& operator()(PetscInt i, PetscInt j) const noexcept
   {
+    if (on_diagonal_() && i < j) SETERRABORT(PETSC_COMM_SELF,PETSC_ERR_LIB,"Trying to access lower triangular portion");
     return data_[order_ == DataOrder::ROW_MAJOR ? ncols_sum_(i)+j : nrows_sum_(j)+i];
   }
 
