@@ -222,7 +222,6 @@ PetscErrorCode MatSymmFast::destroy(Mat m) noexcept
 
 PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
 {
-  //TODO: I believe v_in should become two arguments: b_row, b_col
   const auto&       msf = *impl_cast_(m);
   const auto        N = m->cmap->N; //TODO: don't think we need this
   const auto        nrow = msf.rend_ - msf.rbegin_; //local row block size
@@ -234,26 +233,19 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
   CHKERRQ(VecGetArrayRead(vin,&array_in));
   CHKERRQ(VecGetArrayWrite(vout,&array_out));
 
-  // compute local row-sums
-  // A \in N x N
-  // A[n:n+bs,m:m+bs]
-  // _______
-  // |xxxxxx| ""
-  // | xxxxx| ncols -> 5
-  // |  xxxx| ncols -> 4
-  // |   xxx|
-  // |    xx|
-  // |     x|
+  // TODO get proper slices of b on local rank via broadcast from diagonal
+  // to column communicators
+  
 
-  // for row in [0 ... n]
-  //   for col in ncols(row)
-  //
   auto rowsums = std::vector<PetscScalar>(m->cmap->N,0);
   std::generate_n(std::back_inserter(rowsums),nrow,[&,it=msf.data_.cbegin(),i=0]() mutable {
     const auto begin = it;
     it += msf.ncols_(i++);
     return std::accumulate(begin,it,0);
   });
+
+  // TODO: we can overlap computation and communcation by starting row sum updates of A
+  //       since they do not require b
 
   // all reduce for global row sums
   // TODO
