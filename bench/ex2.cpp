@@ -132,6 +132,19 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
   CHKERRQ(VecGetArrayWrite(vout,&array_out));
 
   // compute local row-sums
+  // A \in N x M
+  // A[n:n+bs,m:m+bs]
+  // _______
+  // |xxxxxx| ""
+  // | xxxxx| ncols -> 5
+  // |  xxxx| ncols -> 4
+  // |   xxx|
+  // |    xx|
+  // |     x|
+
+  // for row in [0 ... n]
+  //   for col in ncols(row)
+  //
   auto rowsums = std::vector<PetscScalar>(m->cmap->N,0);
   std::generate_n(std::back_inserter(rowsums),nrow,[&,it=msf.data_.cbegin(),i=0]() mutable {
     const auto begin = it;
