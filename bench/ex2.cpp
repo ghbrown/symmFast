@@ -236,8 +236,8 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
 
   // TODO get proper slices of b on local rank via broadcast from diagonal
   // to column communicators and row communicators
-  b_col;
-  b_row;
+  b_row; //from communication on msf->row_comm_
+  b_col; //from communication on msf->col_comm_
   
 
   auto rowsums = std::vector<PetscScalar>(m->cmap->N,0);
@@ -260,6 +260,7 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
     MPI_Allreduce(rowsums.data(),rowsums.data(),rowsums.size(),MPIU_SCALAR,MPI_SUM,PetscObjComm(m))
   );
 
+  //these four variables are the ones to reduce
   auto ursa_row = std:vector<PetscScalar>(nrow,0); //updates for row sum of A for row communicator
   auto ursa_col = std:vector<PetscScalar>(ncol,0); //updates for col sum of A for column communicator
   auto ursz_row = std:vector<PetscScalar>(nrow,0); //updates for row sum of Z for row communicator
@@ -268,18 +269,21 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
   for (auto i = 0; i < nrow; ++i) {
     const auto bi = b_row[i];
 
-    for (auto k = 0; k < msf.ncols_(i); ++k) {
+    for (auto k = i*(msf->on_diagonal_()); k < ncol; ++k) {
+      // if not on a diagonal rank, column indices for row start at 0, [0 .. ncols-1]
+      // if on diagonal rank, column indices for row start at row_num, [row_num .. ncols-1]
       const auto aik = msf(i,k);
       const auto bk = b_col[k];
+      const auto aikbibk = aik*(bi + bk); //precompute a_ik*(b_i + b_k)
+
       //updates to row sum of A
       ursa_row[i] += aik;
 
       //updates to row sum of Z
-      aikbibk = aik*(bi + bk); //precompute a_ik*(b_i + b_k)
       ursz_row[i] += aikbibk;
 
       //symmetric updates if not on true diagonal of global matrix
-      if (not ((is_diagonal_rank) && (i == k))){
+      if (not ((msf->on_diagonal_()) && (i == k))){
         ursa_col[k] += aik;
         ursz_col[k] += aikbibk;
       }
