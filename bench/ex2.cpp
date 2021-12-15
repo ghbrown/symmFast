@@ -153,7 +153,7 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
   PetscObjectOptionsBegin(PetscObjectCast(m));
   CHKERRQ(PetscOptionsInt("-mat_symmfast_r","num communicators per dim","Mat",r,&r,nullptr));
   PetscOptionsEnd();
-  if (PetscUnlikely(size != r*(r+1)/2)) SETERRQ2(PetscObjComm(m),PETSC_ERR_ARG_SIZ,"Communicator of size %d not %d",size,r*(r+1)/2);
+  //if (PetscUnlikely(size != r*(r+1)/2)) SETERRQ2(PetscObjComm(m),PETSC_ERR_ARG_SIZ,"Communicator of size %d not %d",size,r*(r+1)/2);
 
   if (rank) {
     auto recv_buf = make_array(-1,-1,-1,-1,-1,-1);
@@ -165,17 +165,20 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
 
     std::tie(msf->rbegin_,msf->rend_,msf->cbegin_,msf->cend_,col_color,row_color) = recv_buf;
   } else {
-    const auto block_size = std::max(cmap->N/r,1);
+    const auto N          = cmap->N;
+    const auto block_size = std::max(N/r,1);
     auto       bounds     = std::vector<PetscInt>();
 
-    CHKERRCXX(bounds.reserve(r));
-    for (auto i = 0,sum = 0; i < r; ++i) {
-      CHKERRCXX(bounds.insert(bounds.cend(),{sum,(i == r-1 ? cmap->N : sum+=block_size)-1}));
-    }
+    CHKERRCXX(bounds.reserve(2*r));
+    std::cout<<r<<std::endl;
+    std::cout<<block_size<<std::endl;
+    for (auto i = 0,sum = 0; i < r; ++i) CHKERRCXX(
+      bounds.insert(bounds.cend(),{sum,(i == r-1 ? N : sum+=block_size)-1})
+    );
     vec_view(bounds);
     for (auto i = 1,cur_row = 0,cur_col = 1; i < size; ++i) {
-      const auto row_idx  = 2*i+cur_row;
-      const auto col_idx  = 2*i+cur_row;
+      const auto row_idx  = 2*cur_row;
+      const auto col_idx  = 2*cur_col;
       const auto send_buf = make_array(
         bounds[row_idx],bounds[row_idx+1],bounds[col_idx],bounds[col_idx+1],cur_row,cur_col
       );
@@ -318,7 +321,7 @@ int main(int argc, char*argv[])
 
   auto comm = PETSC_COMM_WORLD;
   CHKERRQ(MatCreate(comm,&mat));
-  CHKERRQ(MatSetSizes(mat,10,10,PETSC_DECIDE,PETSC_DECIDE));
+  CHKERRQ(MatSetSizes(mat,PETSC_DECIDE,PETSC_DECIDE,10,10));
   CHKERRQ(MatSetType(mat,MATSYMMFAST));
   CHKERRQ(MatSetFromOptions(mat));
   CHKERRQ(MatSetUp(mat));
