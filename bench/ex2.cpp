@@ -5,6 +5,7 @@
 #include <vector>
 #include <numeric>
 #include <iostream>
+#include <array>
 
 #define MATSYMMFAST "symmfast"
 
@@ -18,6 +19,46 @@ static constexpr auto PetscObjectCast(T& obj)
 template <typename T>
 static constexpr auto PetscObjComm(T obj) { return PetscObjectComm(PetscObjectCast(obj)); }
 
+template <typename T>
+static void vec_view(const std::vector<T>& v)
+{
+  for (auto&& x : v) std::cout<<x<<std::endl;
+}
+
+template <typename T, std::size_t N>
+static void vec_view(const std::vector<std::array<T,N>>& v)
+{
+  for (auto&& x : v) std::cout<<std::get<0>(x)<<", "<<std::get<1>(x)<<std::endl;
+}
+
+template <typename F>
+static auto generate_vector(std::size_t size, F&& fn) -> std::vector<decltype(fn())>
+{
+  std::vector<decltype(fn())> vec;
+  vec.reserve(size);
+
+  std::generate_n(std::back_inserter(vec),size,fn);
+  vec.shrink_to_fit();
+  return vec;
+}
+
+namespace impl
+{
+
+template <typename T, typename...> struct type_impl { using type = T; };
+template <typename... T> struct type_impl<void,T...> : std::common_type<T...> { };
+
+template <typename T, typename... Rest>
+using array_type = std::array<typename type_impl<T,Rest...>::type,sizeof...(Rest)>;
+
+} // namespace impl
+
+template <typename R = void, typename... T>
+static impl::array_type<R,T...> make_array(T&&... args) noexcept
+{
+  return {std::forward<T>(args)...};
+}
+
 class MatSymmFast
 {
 private:
@@ -27,6 +68,8 @@ private:
   static const auto order_ = DataOrder::ROW_MAJOR;
 
   const Mat  m_;
+  MPI_Comm   row_comm_;
+  MPI_Comm   col_comm_;
   PetscInt   rbegin_ = PETSC_DECIDE;
   PetscInt   rend_   = PETSC_DECIDE;
   PetscInt   cbegin_ = PETSC_DECIDE;
@@ -46,6 +89,8 @@ private:
     obj = nullptr;
     PetscFunctionReturn(0);
   }
+
+  auto on_diagonal_() const noexcept { return rbegin_ == cbegin_ && rend_ == cend_; }
 
   auto ncols_(PetscInt i) const noexcept { return cend_ - (i < m_->rmap->rstart ? cbegin_ : i); }
   auto nrows_(PetscInt i) const noexcept { return i; }
@@ -93,21 +138,61 @@ template auto MatSymmFast::destroy_(void*&)        noexcept;
 
 PetscErrorCode MatSymmFast::setup(Mat m) noexcept
 {
-  const auto rmap = m->rmap;
-  const auto cmap = m->cmap;
-  const auto msf  = impl_cast_(m);
+  const auto  msf  = impl_cast_(m);
+  const auto  cmap = m->cmap;
+  PetscMPIInt size,rank;
+  PetscInt    col_color,row_color;
+  auto        r = PetscInt(3);
 
   PetscFunctionBegin;
-  CHKERRQ(PetscLayoutSetUp(rmap));
+  CHKERRMPI(MPI_Comm_size(PetscObjComm(m),&size));
+  CHKERRMPI(MPI_Comm_rank(PetscObjComm(m),&rank));
+  CHKERRQ(PetscLayoutSetUp(m->rmap));
   CHKERRQ(PetscLayoutSetUp(cmap));
-  CHKERRQ(PetscIntView(rmap->size+1,rmap->range,PETSC_VIEWER_STDOUT_(PetscObjComm(m))));
-  CHKERRQ(msf->set_ownership_(0,rmap->N,cmap->rstart,cmap->rend));
-  // own a whole column each
-  const auto begin = cmap->rstart+1;
-  const auto end   = cmap->rend+1;
-  CHKERRCXX(msf->data_.resize((begin+end)*(end-begin)/2));
-  CHKERRQ(PetscSynchronizedPrintf(PetscObjComm(m),"rend: %" PetscInt_FMT "\n",rmap->rend));
-  CHKERRQ(PetscSynchronizedFlush(PetscObjComm(m),PETSC_STDOUT));
+
+  PetscObjectOptionsBegin(PetscObjectCast(m));
+  CHKERRQ(PetscOptionsInt("-mat_symmfast_r","num communicators per dim","Mat",r,&r,nullptr));
+  PetscOptionsEnd();
+  if (PetscUnlikely(size != r*(r+1)/2)) SETERRQ2(PetscObjComm(m),PETSC_ERR_ARG_SIZ,"Communicator of size %d not %d",size,r*(r+1)/2);
+
+  if (rank) {
+    auto recv_buf = make_array(-1,-1,-1,-1,-1,-1);
+
+    CHKERRMPI(
+      MPI_Recv(recv_buf.data(),recv_buf.size(),MPIU_INT,0,0,PetscObjComm(m),MPI_STATUS_IGNORE)
+    );
+    for (auto&& x: recv_buf) if (PetscUnlikely(x == -1)) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_MPI,"MPI_Recv from root failed");
+
+    std::tie(msf->rbegin_,msf->rend_,msf->cbegin_,msf->cend_,col_color,row_color) = recv_buf;
+  } else {
+    const auto block_size = std::max(cmap->N/r,1);
+    auto       bounds     = std::vector<PetscInt>();
+
+    CHKERRCXX(bounds.reserve(r));
+    for (auto i = 0,sum = 0; i < r; ++i) {
+      CHKERRCXX(bounds.insert(bounds.cend(),{sum,(i == r-1 ? cmap->N : sum+=block_size)-1}));
+    }
+    vec_view(bounds);
+    for (auto i = 1,cur_row = 0,cur_col = 1; i < size; ++i) {
+      const auto row_idx  = 2*i+cur_row;
+      const auto col_idx  = 2*i+cur_row;
+      const auto send_buf = make_array(
+        bounds[row_idx],bounds[row_idx+1],bounds[col_idx],bounds[col_idx+1],cur_row,cur_col
+      );
+
+      CHKERRMPI(MPI_Send(send_buf.data(),send_buf.size(),MPIU_INT,i,0,PetscObjComm(m)));
+      if (++cur_col > r-1) cur_col = ++cur_row;
+    }
+
+    // rank 0 always know its ownership
+    CHKERRQ(msf->set_ownership_(0,bounds[1],0,bounds[1]));
+    col_color = row_color = 0;
+  }
+  CHKERRMPI(MPI_Comm_split(PetscObjComm(m),col_color,0,&msf->col_comm_));
+  CHKERRMPI(MPI_Comm_split(PetscObjComm(m),row_color,0,&msf->row_comm_));
+
+  const auto n = msf->cend_-msf->cbegin_;
+  CHKERRCXX(msf->data_.resize(msf->on_diagonal_() ? n*(n+1)/2 : n*(msf->rend_-msf->rbegin_)));
   PetscFunctionReturn(0);
 }
 
@@ -183,8 +268,9 @@ PetscErrorCode MatSymmFast::set_random(Mat m, PetscRandom rand) noexcept
   const auto msf = impl_cast_(m);
 
   PetscFunctionBegin;
-  CHKERRQ(msf->check_setup_());
-  CHKERRCXX(std::generate(msf->data_.begin(),msf->data_.end(),[=](){
+  // only diagonal blocks own data
+  if (!msf->on_diagonal_()) PetscFunctionReturn(0);
+  CHKERRCXX(std::generate(msf->data_.begin(),msf->data_.end(),[=]{
     PetscScalar val;
 
     CHKERRABORT(PETSC_COMM_SELF,PetscRandomGetValue(rand,&val));
