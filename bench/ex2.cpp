@@ -3,6 +3,7 @@
 
 #include <type_traits>
 #include <vector>
+#include <numeric>
 #include <iostream>
 
 #define MATSYMMFAST "symmfast"
@@ -21,13 +22,17 @@ class MatSymmFast
 {
 private:
   using array_type = std::vector<PetscScalar>;
+  enum class DataOrder {ROW_MAJOR,COLUMN_MAJOR};
 
-  MPI_Comm   comm_;
+  static const auto order_ = DataOrder::ROW_MAJOR;
+
+  const Mat  m_;
   PetscInt   rbegin_ = PETSC_DECIDE;
   PetscInt   rend_   = PETSC_DECIDE;
   PetscInt   cbegin_ = PETSC_DECIDE;
   PetscInt   cend_   = PETSC_DECIDE;
   array_type data_   = {};
+
 
   static constexpr auto cast_(void* obj) noexcept { return static_cast<MatSymmFast*>(obj); }
 
@@ -42,13 +47,13 @@ private:
     PetscFunctionReturn(0);
   }
 
-  auto nrows_() const noexcept { return rend_-rbegin_; }
-  auto ncols_() const noexcept { return cend_-cbegin_; }
+  auto ncols_(PetscInt i) const noexcept { return cend_ - (i < m_->rmap->rstart ? cbegin_ : i); }
+  auto nrows_(PetscInt i) const noexcept { return i; }
 
   auto check_setup_() const noexcept
   {
     PetscFunctionBegin;
-    if (PetscUnlikelyDebug(data_.size() && (nrows_()*ncols_() != data_.size()))) SETERRQ(comm_,PETSC_ERR_ARG_WRONGSTATE,"Mat was not setup");
+    if (PetscUnlikelyDebug(!data_.size())) SETERRQ(PetscObjComm(m_),PETSC_ERR_ARG_WRONGSTATE,"Mat was not setup");
     PetscFunctionReturn(0);
   }
 
@@ -58,13 +63,22 @@ private:
     rbegin_ = rbegin;
     rend_   = rend;
     cbegin_ = cbegin;
-    cend_   = cend_;
-    CHKERRCXX(data_.resize(nrows_()*ncols_()));
+    cend_   = cend;
     PetscFunctionReturn(0);
   }
 
+  auto& operator()(PetscInt i, PetscInt j) noexcept
+  {
+    return data_[order_ == DataOrder::ROW_MAJOR ? (i*ncols_(i))+j : (j*nrows_(j))+i];
+  }
+
+  const auto& operator()(PetscInt i, PetscInt j) const noexcept
+  {
+    return data_[order_ == DataOrder::ROW_MAJOR ? (i*ncols_(i))+j : (j*nrows_(j))+i];
+  }
+
 public:
-  MatSymmFast(MPI_Comm comm) noexcept : comm_(comm) { }
+  MatSymmFast(Mat m) noexcept : m_(m) { }
 
   static PetscErrorCode create(Mat)                 noexcept;
   static PetscErrorCode destroy(Mat)                noexcept;
@@ -79,21 +93,19 @@ template auto MatSymmFast::destroy_(void*&)        noexcept;
 
 PetscErrorCode MatSymmFast::setup(Mat m) noexcept
 {
-  PetscFunctionBegin;
   const auto rmap = m->rmap;
-  CHKERRQ(PetscLayoutSetUp(rmap));
-  CHKERRQ(PetscIntView(rmap->size+1,rmap->range,PETSC_VIEWER_STDOUT_(PetscObjComm(m))));
   const auto cmap = m->cmap;
+  const auto msf  = impl_cast_(m);
+
+  PetscFunctionBegin;
+  CHKERRQ(PetscLayoutSetUp(rmap));
   CHKERRQ(PetscLayoutSetUp(cmap));
-  PetscMPIInt size,rank;
-  CHKERRMPI(MPI_Comm_size(PetscObjComm(m),&size));
-  CHKERRMPI(MPI_Comm_rank(PetscObjComm(m),&rank));
-  const auto total_size = rmap->N*cmap->N;
-  const auto half_size  = rmap->N*cmap->N/2;
-  const auto num_row_blocks = int(sqrt(rmap->N)+1);
-  const auto num_col_blocks = int(sqrt(cmap->N)+1);
-  const auto total_num_blocks = num_row_blocks*num_col_blocks;
-  CHKERRQ(impl_cast_(m)->set_ownership_(rmap->rend-rmap->rstart,cmap->rend-cmap->rstart));
+  CHKERRQ(PetscIntView(rmap->size+1,rmap->range,PETSC_VIEWER_STDOUT_(PetscObjComm(m))));
+  CHKERRQ(msf->set_ownership_(0,rmap->N,cmap->rstart,cmap->rend));
+  // own a whole column each
+  const auto begin = cmap->rstart+1;
+  const auto end   = cmap->rend+1;
+  CHKERRCXX(msf->data_.resize((begin+end)*(end-begin)/2));
   CHKERRQ(PetscSynchronizedPrintf(PetscObjComm(m),"rend: %" PetscInt_FMT "\n",rmap->rend));
   CHKERRQ(PetscSynchronizedFlush(PetscObjComm(m),PETSC_STDOUT));
   PetscFunctionReturn(0);
@@ -109,29 +121,67 @@ PetscErrorCode MatSymmFast::destroy(Mat m) noexcept
 
 PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
 {
-  PetscFunctionBegin;
+  const auto&       msf = *impl_cast_(m);
+  const auto        N = m->cmap->N;
+  const auto        nrow = msf.rend_-msf.rbegin_;
+  const PetscScalar *array_in;
+  PetscScalar       *array_out;
 
+  PetscFunctionBegin;
+  CHKERRQ(VecGetArrayRead(vin,&array_in));
+  CHKERRQ(VecGetArrayWrite(vout,&array_out));
+
+  // compute local row-sums
+  auto rowsums = std::vector<PetscScalar>(m->cmap->N,0);
+  std::generate_n(std::back_inserter(rowsums),nrow,[&,it=msf.data_.cbegin(),i=0]() mutable {
+    const auto begin = it;
+    it += msf.ncols_(i++);
+    return std::accumulate(begin,it,0);
+  });
+
+  // all reduce for global row sums
+  CHKERRMPI(
+    MPI_Allreduce(rowsums.data(),rowsums.data(),rowsums.size(),MPIU_SCALAR,MPI_SUM,PetscObjComm(m))
+  );
+
+  for (auto i = 0; i < nrow; ++i) {
+    auto       lhs_sum = PetscScalar(0);
+    auto       rhs_sum = PetscScalar(0);
+    const auto bi      = array_in[i];
+
+    // compute local row-sums of A
+
+    for (auto k = i; k < N; ++k) {
+      const auto aik = msf(i,k);
+      const auto bk  = array_in[k];
+
+      lhs_sum += aik*(bi+bk);
+      rhs_sum += aik;
+    }
+    array_out[i] = lhs_sum-(rhs_sum*bi);
+  }
+  CHKERRQ(VecRestoreArrayWrite(vout,&array_out));
+  CHKERRQ(VecRestoreArrayRead(vin,&array_in));
   PetscFunctionReturn(0);
 }
 
 PetscErrorCode MatSymmFast::set_random(Mat m, PetscRandom rand) noexcept
 {
-  PetscFunctionBegin;
   const auto msf = impl_cast_(m);
+
+  PetscFunctionBegin;
   CHKERRQ(msf->check_setup_());
-  std::generate(msf->data_.begin(),msf->data_.end(),[=](){
+  CHKERRCXX(std::generate(msf->data_.begin(),msf->data_.end(),[=](){
     PetscScalar val;
 
     CHKERRABORT(PETSC_COMM_SELF,PetscRandomGetValue(rand,&val));
     return val;
-  });
+  }));
   PetscFunctionReturn(0);
 }
 
 PetscErrorCode MatSymmFast::create(Mat m) noexcept
 {
-  PetscErrorCode ierr;
-
   PetscFunctionBegin;
   m->ops->mult	    = mat_mult;
   m->ops->setrandom = set_random;
@@ -145,7 +195,7 @@ PetscErrorCode MatSymmFast::create(Mat m) noexcept
   CHKERRQ(MatSetOption(m,MAT_SYMMETRIC,PETSC_TRUE));
   CHKERRQ(MatSetOption(m,MAT_SYMMETRY_ETERNAL,PETSC_TRUE));
   CHKERRQ(PetscFree(m->data));
-  m->data = new MatSymmFast(PetscObjComm(m));
+  m->data = new MatSymmFast{m};
   CHKERRQ(PetscObjectChangeTypeName(PetscObjectCast(m),MATSYMMFAST));
   PetscFunctionReturn(0);
 }
@@ -161,31 +211,33 @@ PetscErrorCode MatSymmFast::view(Mat m, PetscViewer vwr) noexcept
 int main(int argc, char*argv[])
 {
   PetscErrorCode ierr;
-  MPI_Comm       comm;
   Mat            mat;
   Vec            vin,vout;
 
   ierr = PetscInitialize(&argc,&argv,nullptr,nullptr);if (PetscUnlikely(ierr)) return ierr;
-  ierr = MatRegister(MATSYMMFAST,MatSymmFast::create);CHKERRQ(ierr);
-  comm = PETSC_COMM_WORLD;
+  CHKERRQ(MatRegister(MATSYMMFAST,MatSymmFast::create));
 
-  ierr = MatCreate(comm,&mat);CHKERRQ(ierr);
-  ierr = MatSetSizes(mat,10,10,PETSC_DECIDE,PETSC_DECIDE);CHKERRQ(ierr);
-  ierr = MatSetType(mat,MATSYMMFAST);CHKERRQ(ierr);
-  ierr = MatSetFromOptions(mat);CHKERRQ(ierr);
-  ierr = MatSetUp(mat);CHKERRQ(ierr);
-  ierr = MatSetRandom(mat,nullptr);CHKERRQ(ierr);
+  auto comm = PETSC_COMM_WORLD;
+  CHKERRQ(MatCreate(comm,&mat));
+  CHKERRQ(MatSetSizes(mat,10,10,PETSC_DECIDE,PETSC_DECIDE));
+  CHKERRQ(MatSetType(mat,MATSYMMFAST));
+  CHKERRQ(MatSetFromOptions(mat));
+  CHKERRQ(MatSetUp(mat));
+  CHKERRQ(MatSetRandom(mat,nullptr));
 
-  ierr = MatCreateVecs(mat,&vin,&vout);CHKERRQ(ierr);
-  ierr = VecSetFromOptions(vin);CHKERRQ(ierr);
-  ierr = VecSetFromOptions(vout);CHKERRQ(ierr);
-  ierr = VecSetRandom(vin,nullptr);CHKERRQ(ierr);
-  ierr = VecSetRandom(vout,nullptr);CHKERRQ(ierr);
+  CHKERRQ(MatCreateVecs(mat,&vin,&vout));
+  CHKERRQ(VecSetFromOptions(vin));
+  CHKERRQ(VecSetFromOptions(vout));
+  CHKERRQ(VecSetRandom(vin,nullptr));
+  CHKERRQ(VecZeroEntries(vout));
 
-  ierr = MatMult(mat,vin,vout);CHKERRQ(ierr);
+  CHKERRQ(VecViewFromOptions(vout,nullptr,"-result_view"));
+  CHKERRQ(MatMult(mat,vin,vout));
+  CHKERRQ(VecViewFromOptions(vout,nullptr,"-result_view"));
 
-  ierr = VecDestroy(&vin);CHKERRQ(ierr);
-  ierr = VecDestroy(&vout);CHKERRQ(ierr);
-  ierr = MatDestroy(&mat);CHKERRQ(ierr);
-  return PetscFinalize();
+  CHKERRQ(VecDestroy(&vin));
+  CHKERRQ(VecDestroy(&vout));
+  CHKERRQ(MatDestroy(&mat));
+  ierr = PetscFinalize();
+  return ierr;
 }
