@@ -1,4 +1,4 @@
-#include <petscvec.h>
+#include <petsc/private/vecimpl.h>
 #include <petsc/private/matimpl.h>
 
 #include <type_traits>
@@ -91,13 +91,22 @@ private:
 
   auto on_diagonal_() const noexcept { return rbegin_ == cbegin_ && rend_ == cend_; }
 
-  auto ncols_(PetscInt i) const noexcept { return cend_ - (i < m_->rmap->rstart ? cbegin_ : i); }
-  auto nrows_(PetscInt i) const noexcept { return i; }
+  auto ncols_(PetscInt row) const noexcept { return cend_-cbegin_-on_diagonal_()*row; }
+  auto nrows_(PetscInt col) const noexcept { return rend_-rbegin_-on_diagonal_()*col; }
+  auto ncols_sum_(PetscInt row) const noexcept
+  {
+    return row*(on_diagonal_() ? (ncols_(row)+(cend_-cbegin_))/2 : ncols_(row));
+  }
+
+  auto nrows_sum_(PetscInt col) const noexcept
+  {
+    return col*(on_diagonal_() ? (1+nrows_(col))/2 : nrows_(col));
+  }
 
   auto check_setup_() const noexcept
   {
     PetscFunctionBegin;
-    if (PetscUnlikelyDebug(!data_.size())) SETERRQ(PetscObjComm(m_),PETSC_ERR_ARG_WRONGSTATE,"Mat was not setup");
+    if (PetscUnlikelyDebug(row_comm_ != MPI_COMM_NULL)) SETERRQ(PetscObjComm(m_),PETSC_ERR_ARG_WRONGSTATE,"Mat was not setup");
     PetscFunctionReturn(0);
   }
 
@@ -113,12 +122,12 @@ private:
 
   auto& operator()(PetscInt i, PetscInt j) noexcept
   {
-    return data_[order_ == DataOrder::ROW_MAJOR ? (i*ncols_(i))+j : (j*nrows_(j))+i];
+    return data_[order_ == DataOrder::ROW_MAJOR ? ncols_sum_(i)+j : nrows_sum_(j)+i];
   }
 
   const auto& operator()(PetscInt i, PetscInt j) const noexcept
   {
-    return data_[order_ == DataOrder::ROW_MAJOR ? (i*ncols_(i))+j : (j*nrows_(j))+i];
+    return data_[order_ == DataOrder::ROW_MAJOR ? ncols_sum_(i)+j : nrows_sum_(j)+i];
   }
 
 public:
@@ -130,6 +139,7 @@ public:
   static PetscErrorCode set_random(Mat,PetscRandom) noexcept;
   static PetscErrorCode mat_mult(Mat,Vec,Vec)       noexcept;
   static PetscErrorCode view(Mat,PetscViewer)       noexcept;
+  static PetscErrorCode get_vecs(Mat,Vec*,Vec*)     noexcept;
 };
 
 template auto MatSymmFast::destroy_(MatSymmFast*&) noexcept;
@@ -141,7 +151,7 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
   const auto  cmap = m->cmap;
   PetscMPIInt size,rank;
   PetscInt    col_color,row_color;
-  auto        r = PetscInt(3);
+  auto        r = 3;
 
   PetscFunctionBegin;
   CHKERRMPI(MPI_Comm_size(PetscObjComm(m),&size));
@@ -152,7 +162,7 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
   PetscObjectOptionsBegin(PetscObjectCast(m));
   CHKERRQ(PetscOptionsInt("-mat_symmfast_r","num communicators per dim","Mat",r,&r,nullptr));
   PetscOptionsEnd();
-  //if (PetscUnlikely(size != r*(r+1)/2)) SETERRQ2(PetscObjComm(m),PETSC_ERR_ARG_SIZ,"Communicator of size %d not %d",size,r*(r+1)/2);
+  if (PetscUnlikely(size != r*(r+1)/2)) SETERRQ2(PetscObjComm(m),PETSC_ERR_ARG_SIZ,"Communicator of size %d not %d",size,r*(r+1)/2);
 
   if (rank) {
     auto recv_buf = make_array(-1,-1,-1,-1,-1,-1);
@@ -166,7 +176,7 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
   } else {
     const auto N          = cmap->N;
     const auto block_size = std::max(N/r,1);
-    auto       bounds     = std::vector<PetscInt>();
+    auto       bounds     = std::vector<PetscInt>{};
 
     CHKERRCXX(bounds.reserve(2*r));
     std::cout<<r<<std::endl;
@@ -190,8 +200,8 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
     CHKERRQ(msf->set_ownership_(0,bounds[1],0,bounds[1]));
     col_color = row_color = 0;
   }
-  CHKERRMPI(MPI_Comm_split(PetscObjComm(m),col_color,0,&msf->col_comm_));
-  CHKERRMPI(MPI_Comm_split(PetscObjComm(m),row_color,0,&msf->row_comm_));
+  CHKERRMPI(MPI_Comm_split(PetscObjComm(m),col_color,rank,&msf->col_comm_));
+  CHKERRMPI(MPI_Comm_split(PetscObjComm(m),row_color,rank,&msf->row_comm_));
 
   const auto n = msf->cend_-msf->cbegin_;
   CHKERRCXX(msf->data_.resize(msf->on_diagonal_() ? n*(n+1)/2 : n*(msf->rend_-msf->rbegin_)));
@@ -293,6 +303,7 @@ PetscErrorCode MatSymmFast::create(Mat m) noexcept
   m->ops->setup	    = setup;
   m->ops->destroy   = destroy;
   m->ops->view      = view;
+  m->ops->getvecs   = get_vecs;
 
   m->symmetric	       = PETSC_TRUE;
   m->hermitian	       = PETSC_TRUE;
@@ -308,8 +319,34 @@ PetscErrorCode MatSymmFast::create(Mat m) noexcept
 PetscErrorCode MatSymmFast::view(Mat m, PetscViewer vwr) noexcept
 {
   PetscFunctionBegin;
-  const auto values = impl_cast_(m)->data_;
-  CHKERRQ(PetscScalarView(values.size(),values.data(),PETSC_VIEWER_STDOUT_(PetscObjComm(m))));
+  const auto& values = impl_cast_(m)->data_;
+  CHKERRQ(PetscScalarView(values.size(),values.data(),vwr));
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode MatSymmFast::get_vecs(Mat m, Vec *right, Vec *left) noexcept
+{
+  const auto msf = impl_cast_(m);
+
+  PetscFunctionBegin;
+  if (right) {
+    Vec v;
+
+    CHKERRQ(VecCreate(PetscObjComm(m),&v));
+    CHKERRQ(VecSetSizes(v,msf->on_diagonal_() ? msf->ncols_(0) : 0,m->cmap->N));
+    CHKERRQ(VecSetType(v,m->defaultvectype));
+    CHKERRQ(PetscLayoutReference(m->cmap,&v->map));
+    *right = v;
+  }
+  if (left) {
+    Vec v;
+
+    CHKERRQ(VecCreate(PetscObjComm(m),&v));
+    CHKERRQ(VecSetSizes(v,msf->on_diagonal_() ? msf->nrows_(0) : 0,m->rmap->N));
+    CHKERRQ(VecSetType(v,m->defaultvectype));
+    CHKERRQ(PetscLayoutReference(m->rmap,&v->map));
+    *left = v;
+  }
   PetscFunctionReturn(0);
 }
 
