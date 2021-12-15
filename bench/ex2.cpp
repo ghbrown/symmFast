@@ -268,10 +268,16 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
 
   for (auto i = 0; i < nrow; ++i) {
     const auto bi = b_row[i];
+    const auto col_index_start;
+    if (msf->on_diagonal_()){
+      // if on diagonal rank, column indices for row i start at i, k = [i .. ncols-1]
+      col_index_start = i;
+    } else {
+      // if not on a diagonal rank, column indices for row i start at 0, k = [0 .. ncols-1]
+      col_index_start = 0;
+    }
 
-    for (auto k = i*(msf->on_diagonal_()); k < ncol; ++k) {
-      // if not on a diagonal rank, column indices for row start at 0, [0 .. ncols-1]
-      // if on diagonal rank, column indices for row start at row_num, [row_num .. ncols-1]
+    for (auto k = col_index_start; k < ncol; ++k) {
       const auto aik = msf(i,k);
       const auto bk = b_col[k];
       const auto aikbibk = aik*(bi + bk); //precompute a_ik*(b_i + b_k)
