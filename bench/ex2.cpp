@@ -68,14 +68,13 @@ private:
   static const auto order_ = DataOrder::ROW_MAJOR;
 
   const Mat  m_;
-  MPI_Comm   row_comm_;
-  MPI_Comm   col_comm_;
-  PetscInt   rbegin_ = PETSC_DECIDE;
-  PetscInt   rend_   = PETSC_DECIDE;
-  PetscInt   cbegin_ = PETSC_DECIDE;
-  PetscInt   cend_   = PETSC_DECIDE;
-  array_type data_   = {};
-
+  MPI_Comm   row_comm_ = MPI_COMM_NULL;
+  MPI_Comm   col_comm_ = MPI_COMM_NULL;
+  PetscInt   rbegin_   = PETSC_DECIDE;
+  PetscInt   rend_     = PETSC_DECIDE;
+  PetscInt   cbegin_   = PETSC_DECIDE;
+  PetscInt   cend_     = PETSC_DECIDE;
+  array_type data_     = {};
 
   static constexpr auto cast_(void* obj) noexcept { return static_cast<MatSymmFast*>(obj); }
 
@@ -175,7 +174,7 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
     for (auto i = 0,sum = 0; i < r; ++i) CHKERRCXX(
       bounds.insert(bounds.cend(),{sum,(i == r-1 ? N : sum+=block_size)-1})
     );
-    vec_view(bounds);
+
     for (auto i = 1,cur_row = 0,cur_col = 1; i < size; ++i) {
       const auto row_idx  = 2*cur_row;
       const auto col_idx  = 2*cur_col;
@@ -201,7 +200,11 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
 
 PetscErrorCode MatSymmFast::destroy(Mat m) noexcept
 {
+  const auto msf = impl_cast_(m);
+
   PetscFunctionBegin;
+  if (msf->col_comm_ != MPI_COMM_NULL) CHKERRMPI(MPI_Comm_free(&msf->col_comm_));
+  if (msf->row_comm_ != MPI_COMM_NULL) CHKERRMPI(MPI_Comm_free(&msf->row_comm_));
   CHKERRQ(destroy_(m->data));
   CHKERRQ(PetscObjectChangeTypeName(PetscObjectCast(m),nullptr));
   PetscFunctionReturn(0);
