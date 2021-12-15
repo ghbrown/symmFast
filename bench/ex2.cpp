@@ -222,6 +222,7 @@ PetscErrorCode MatSymmFast::destroy(Mat m) noexcept
 
 PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
 {
+  //computes matrix vector product m @ vin = vout
   const auto&       msf = *impl_cast_(m);
   const auto        N = m->cmap->N; //TODO: don't think we need this
   const auto        nrow = msf.rend_ - msf.rbegin_; //local row block size
@@ -234,7 +235,9 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
   CHKERRQ(VecGetArrayWrite(vout,&array_out));
 
   // TODO get proper slices of b on local rank via broadcast from diagonal
-  // to column communicators
+  // to column communicators and row communicators
+  b_col;
+  b_row;
   
 
   auto rowsums = std::vector<PetscScalar>(m->cmap->N,0);
@@ -270,12 +273,18 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
       const auto bk = b_col[k];
       //updates to row sum of A
       ursa_row[i] += aik;
-      ursa_col[k] += aik;
 
       //updates to row sum of Z
       aikbibk = aik*(bi + bk); //precompute a_ik*(b_i + b_k)
       ursz_row[i] += aikbibk;
-      ursz_col[k] += aikbibk;
+
+      //symmetric updates if not on true diagonal of global matrix
+      if (not ((is_diagonal_rank) && (i == k))){
+        ursa_col[k] += aik;
+        ursz_col[k] += aikbibk;
+      }
+
+    }
     }
   }
 
