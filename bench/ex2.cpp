@@ -222,9 +222,11 @@ PetscErrorCode MatSymmFast::destroy(Mat m) noexcept
 
 PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
 {
+  //TODO: I believe v_in should become two arguments: b_row, b_col
   const auto&       msf = *impl_cast_(m);
-  const auto        N = m->cmap->N;
-  const auto        nrow = msf.rend_-msf.rbegin_;
+  const auto        N = m->cmap->N; //TODO: don't think we need this
+  const auto        nrow = msf.rend_ - msf.rbegin_; //local row block size
+  const auto        ncol = msf.cend_ - msf.cbegin_; //local column block size
   const PetscScalar *array_in;
   PetscScalar       *array_out;
 
@@ -233,7 +235,7 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
   CHKERRQ(VecGetArrayWrite(vout,&array_out));
 
   // compute local row-sums
-  // A \in N x M
+  // A \in N x N
   // A[n:n+bs,m:m+bs]
   // _______
   // |xxxxxx| ""
@@ -254,26 +256,38 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
   });
 
   // all reduce for global row sums
+  // TODO
+  // we should need at least 2 reduces, on along column communicator and one along row
+  // communicator
+  // if we reduce rowsums of A and Z separately we'll need 4 total, but I think we should be
+  // able to combine them
   CHKERRMPI(
     MPI_Allreduce(rowsums.data(),rowsums.data(),rowsums.size(),MPIU_SCALAR,MPI_SUM,PetscObjComm(m))
   );
 
+  auto ursa_row = std:vector<PetscScalar>(nrow,0); //updates for row sum of A for row communicator
+  auto ursa_col = std:vector<PetscScalar>(ncol,0); //updates for col sum of A for column communicator
+  auto ursz_row = std:vector<PetscScalar>(nrow,0); //updates for row sum of Z for row communicator
+  auto ursz_col = std:vector<PetscScalar>(ncol,0); //updates for col sum of Z for column communicator
+
   for (auto i = 0; i < nrow; ++i) {
-    auto       lhs_sum = PetscScalar(0);
-    auto       rhs_sum = PetscScalar(0);
-    const auto bi      = array_in[i];
+    const auto bi = b_row[i];
 
-    // compute local row-sums of A
-
-    for (auto k = i; k < N; ++k) {
+    for (auto k = 0; k < msf.ncols_(i); ++k) {
       const auto aik = msf(i,k);
-      const auto bk  = array_in[k];
+      const auto bk = b_col[k];
+      //updates to row sum of A
+      ursa_row[i] += aik;
+      ursa_col[k] += aik;
 
-      lhs_sum += aik*(bi+bk);
-      rhs_sum += aik;
+      //updates to row sum of Z
+      aikbibk = aik*(bi + bk); //precompute a_ik*(b_i + b_k)
+      ursz_row[i] += aikbibk;
+      ursz_col[k] += aikbibk;
     }
-    array_out[i] = lhs_sum-(rhs_sum*bi);
   }
+
+  //TODO: not sure what's happening down here
   CHKERRQ(VecRestoreArrayWrite(vout,&array_out));
   CHKERRQ(VecRestoreArrayRead(vin,&array_in));
   PetscFunctionReturn(0);
