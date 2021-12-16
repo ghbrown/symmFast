@@ -251,11 +251,6 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
   // locals[nrow:ncol] -> updates for Z row sum row comm
   // locals[nrow+ncol:nrow+ncol+nrow] -> updates for A row sum col comm
   // locals[nrow+ncol+nrow:-1] -> updates for Z row sum col comm
-
-
-  // locals[nrow:ncol] -> updates for A row sum col comm
-  // locals[nrow+ncol:nrow+ncol+nrow] -> updates for Z row sum row comm
-  // locals[nrow+ncol+nrow:-1] -> updates for Z row sum col comm
   auto local = std::vector<PetscScalar>(nrow+nrow+ncol+ncol,0);
   const auto rc_size = nrow+nrow;
 
@@ -293,6 +288,7 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
     if (csize) CHKERRMPI(MPI_Reduce(crank ? coldat : MPI_IN_PLACE,coldat,ncol+ncol,MPIU_SCALAR,MPI_SUM,0,msf.col_comm_));
   }
   if (msf.on_diagonal_()) {
+    // final reduction here
     CHKERRQ(VecRestoreArrayRead(vin,const_cast<const PetscScalar**>(&b_row)));
     CHKERRQ(VecRestoreArrayWrite(vout,&array_out));
   } else delete[] b_row;
