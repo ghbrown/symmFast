@@ -300,7 +300,7 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
     // assign to output
     std::transform(
       local.cbegin(),local.cbegin()+ncol,local.cbegin()+ncol,array_out,
-      [bi=b_row](auto ai, auto zi) mutable { return zi-ai*(*bi)++; }
+      [bi=b_row](auto ai, auto zi) mutable { return zi-ai*(*bi++); }
     );
 
     CHKERRQ(VecRestoreArrayRead(vin,const_cast<const PetscScalar**>(&b_row)));
