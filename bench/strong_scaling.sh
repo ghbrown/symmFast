@@ -13,6 +13,8 @@ pfile='n_procs_strong.txt'
 timefile='times_strong.txt'
 ofile='output.txt'
 
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/projects/qmchamm/shared/jacobflib/petsc/arch-linux-c-opt/lib
+
 #matrix dimension
 #matrix memory N=15000, complex entries: 1.8 gigabytes
 #N=15000
