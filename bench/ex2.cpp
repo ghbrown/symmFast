@@ -160,9 +160,12 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
   CHKERRQ(PetscLayoutSetUp(m->rmap));
   CHKERRQ(PetscLayoutSetUp(cmap));
 
-  PetscObjectOptionsBegin(PetscObjectCast(m));
-  CHKERRQ(PetscOptionsInt("-mat_symmfast_r","num communicators per dim","Mat",r,&r,nullptr));
-  PetscOptionsEnd();
+  {
+    PetscObjectOptionsBegin(PetscObjectCast(m));
+    CHKERRQ(PetscOptionsInt("-comm_per_dim","num communicators per dim","Mat",r,&r,nullptr));
+    PetscOptionsEnd();
+  }
+
   if (PetscUnlikely(size != r*(r+1)/2)) SETERRQ2(PetscObjComm(m),PETSC_ERR_ARG_SIZ,"Communicator of size %d not %d",size,r*(r+1)/2);
 
   if (rank) {
@@ -288,6 +291,13 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
     if (csize) CHKERRMPI(MPI_Reduce(crank ? coldat : MPI_IN_PLACE,coldat,ncol+ncol,MPIU_SCALAR,MPI_SUM,0,msf.col_comm_));
   }
   if (msf.on_diagonal_()) {
+    std::transform(
+      local.cbegin()+rc_size,local.cend(),local.begin(),local.begin()+rc_size,std::plus<>{}
+    );
+    std::transform(
+      local.cbegin(),local.cbegin()+ncol,local.cbegin()+ncol,array_out,
+      [bi=b_row](auto ai, auto zi) mutable { return zi-ai*(*bi)++; }
+    );
     // final reduction here
     CHKERRQ(VecRestoreArrayRead(vin,const_cast<const PetscScalar**>(&b_row)));
     CHKERRQ(VecRestoreArrayWrite(vout,&array_out));
@@ -419,19 +429,25 @@ static PetscErrorCode MatMult_Private(Mat m, Vec x, Vec y) noexcept
   PetscFunctionReturn(0);
 }
 
-static const auto default_lambda = [](Mat,Vec,Vec){ return 0; };
-
-template <typename F = decltype(default_lambda)>
-static PetscErrorCode MatMultTime(MPI_Comm comm, MatType type, PetscInt rows, PetscInt cols, F pre_process_fn = default_lambda, std::size_t its = 1000) noexcept
+static PetscErrorCode MatMultTime(MPI_Comm comm, MatType type, PetscInt its) noexcept
 {
   PetscMPIInt size;
   Mat         mat;
   Vec         vin,vout;
+  PetscInt    rows = 10,cols = 10;
   double      root_elapsed = 0;
 
   PetscFunctionBegin;
   CHKERRQ(MatCreate(comm,&mat));
   CHKERRQ(PetscObjectSetOptionsPrefix(PetscObjectCast(mat),type));
+
+  {
+    PetscObjectOptionsBegin(PetscObjectCast(mat));
+    CHKERRQ(PetscOptionsInt("-row_size","number of rows","Mat",rows,&rows,nullptr));
+    CHKERRQ(PetscOptionsInt("-col_size","number of cols","Mat",cols,&cols,nullptr));
+    PetscOptionsEnd();
+  }
+
   CHKERRQ(MatSetSizes(mat,PETSC_DECIDE,PETSC_DECIDE,rows,cols));
   CHKERRQ(MatSetType(mat,type));
   CHKERRQ(MatSetOption(mat,MAT_SYMMETRIC,PETSC_TRUE));
@@ -474,16 +490,20 @@ static PetscErrorCode MatMultTime(MPI_Comm comm, MatType type, PetscInt rows, Pe
 
 int main(int argc, char*argv[])
 {
-  PetscInt       rows = 10, cols = 10;
+  PetscInt       its = 1000;
   PetscErrorCode ierr;
 
   ierr = PetscInitialize(&argc,&argv,nullptr,nullptr);if (PetscUnlikely(ierr)) return ierr;
   CHKERRQ(MatRegister(MATSYMMFAST,MatSymmFast::create));
   auto comm = PETSC_COMM_WORLD;
 
-  CHKERRQ(MatMultTime(comm,MATDENSE,rows,cols));
-  CHKERRQ(MatMultTime(comm,MATSYMMFAST,rows,cols));
+  {
+    PetscOptionsBegin(comm,"","General options","");
+    CHKERRQ(PetscOptionsInt("-num_iterations","how many iterations to do for timing",nullptr,its,&its,nullptr));
+    PetscOptionsEnd();
+  }
+  CHKERRQ(MatMultTime(comm,MATDENSE,its));
+  CHKERRQ(MatMultTime(comm,MATSYMMFAST,its));
 
-  ierr = PetscFinalize();
-  return ierr;
+  return PetscFinalize();
 }

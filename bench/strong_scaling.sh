@@ -11,10 +11,12 @@
 #file to which processor number and 
 pfile='n_procs_strong.txt'
 timefile='times_strong.txt'
+ofile='output.txt'
 
 #matrix dimension
 #matrix memory N=15000, complex entries: 1.8 gigabytes
-N=15000
+#N=15000
+N=150
 
 #number of processes along side of 2-D mesh
 rs=(1 2 4  8  10 25  50)
@@ -23,9 +25,10 @@ rs=(1 2 4  8  10 25  50)
 ps=(1 3 10 36 55 325 1275)
 
 for i in ${!ps[@]}; do
-    echo ${ps[$i]} >> ${pfile}
-    #srun execname 1>> timefile
-    #command line input for matrix size?
+  printf "%d %d %d\n" $N ${ps[$i]} ${rs[$i]} >> ${ofile}
+  #srun execname 1>> timefile
+  #command line input for matrix size?
+  ./ex2 -symmfastrow_size $N -symmfastcol_size $N -denserow_size $N -densecol_size $N -symmfastcomm_per_dim ${rs[$i]} 1>> ${ofile}
 done
 
 #add delimiters between runs in case of multiple runs
