@@ -10,29 +10,29 @@
 #define MATSYMMFAST "symmfast"
 
 template <typename T>
-static constexpr auto PetscObjectCast(T& obj)
+static constexpr auto PetscObjectCast(T& obj) noexcept
 {
   static_assert(std::is_pointer_v<T>);
   return reinterpret_cast<PetscObject>(obj);
 }
 
 template <typename T>
-static constexpr auto PetscObjComm(T obj) { return PetscObjectComm(PetscObjectCast(obj)); }
+static constexpr auto PetscObjComm(T o) noexcept { return PetscObjectComm(PetscObjectCast(o)); }
 
 template <typename T>
-static void vec_view(const std::vector<T>& v)
+static void vec_view(const std::vector<T>& v) noexcept
 {
   for (auto&& x : v) std::cout<<x<<std::endl;
 }
 
 template <typename T, std::size_t N>
-static void vec_view(const std::vector<std::array<T,N>>& v)
+static void vec_view(const std::vector<std::array<T,N>>& v) noexcept
 {
   for (auto&& x : v) std::cout<<std::get<0>(x)<<", "<<std::get<1>(x)<<std::endl;
 }
 
 template <typename F>
-static auto generate_vector(std::size_t size, F&& fn) -> std::vector<decltype(fn())>
+static auto generate_vector(std::size_t size, F&& fn) noexcept -> std::vector<decltype(fn())>
 {
   std::vector<decltype(fn())> vec;
   vec.reserve(size);
@@ -164,7 +164,7 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
   PetscObjectOptionsBegin(PetscObjectCast(m));
   CHKERRQ(PetscOptionsInt("-mat_symmfast_r","num communicators per dim","Mat",r,&r,nullptr));
   PetscOptionsEnd();
-  //if (PetscUnlikely(size != r*(r+1)/2)) SETERRQ2(PetscObjComm(m),PETSC_ERR_ARG_SIZ,"Communicator of size %d not %d",size,r*(r+1)/2);
+  if (PetscUnlikely(size != r*(r+1)/2)) SETERRQ2(PetscObjComm(m),PETSC_ERR_ARG_SIZ,"Communicator of size %d not %d",size,r*(r+1)/2);
 
   if (rank) {
     auto recv_buf = make_array(-1,-1,-1,-1,-1,-1);
@@ -181,8 +181,6 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
     auto       bounds     = std::vector<PetscInt>{};
 
     CHKERRCXX(bounds.reserve(2*r));
-    std::cout<<r<<std::endl;
-    std::cout<<block_size<<std::endl;
     for (auto i = 0,sum = 0; i < r; ++i) CHKERRCXX(
       bounds.insert(bounds.cend(),{sum,i == r-1 ? N : sum+=block_size})
     );
@@ -396,7 +394,7 @@ static PetscErrorCode MatMult_Private(Mat m, Vec x, Vec y) noexcept
   CHKERRQ(VecLockReadPush(x));
   if (!m->ops->mult) SETERRQ1(PetscObjectComm(PetscObjectCast(m)),PETSC_ERR_SUP,"Matrix type %s does not have a multiply defined",(PetscObjectCast(m))->type_name);
   CHKERRQ(PetscLogEventBegin(MAT_Mult,m,x,y,0));
-  CHKERRQ((*m->ops->mult)(m,x,y));
+  CHKERRQ(m->ops->mult(m,x,y));
   CHKERRQ(PetscLogEventEnd(MAT_Mult,m,x,y,0));
   if (m->erroriffailure) CHKERRQ(VecValidValues(y,3,PETSC_FALSE));
   CHKERRQ(VecLockReadPop(x));
