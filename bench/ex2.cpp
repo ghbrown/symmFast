@@ -228,14 +228,12 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
   const auto&  msf  = *impl_cast_(m);
   const auto   nrow = msf.rend_ - msf.rbegin_; //local row block size
   const auto   ncol = msf.cend_ - msf.cbegin_; //local column block size
-  PetscScalar *array_out = nullptr;
   PetscScalar *b_row,*b_col;
   PetscMPIInt rsize,csize,rrank,crank;
 
   PetscFunctionBegin;
   if (msf.on_diagonal_()) {
     CHKERRQ(VecGetArrayRead(vin,const_cast<const PetscScalar**>(&b_row)));
-    CHKERRQ(VecGetArrayWrite(vout,&array_out));
     b_col = b_row;
   } else {
     b_row = new PetscScalar[nrow+ncol];
@@ -291,10 +289,14 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
     if (csize) CHKERRMPI(MPI_Reduce(crank ? coldat : MPI_IN_PLACE,coldat,ncol+ncol,MPIU_SCALAR,MPI_SUM,0,msf.col_comm_));
   }
   if (msf.on_diagonal_()) {
-    // final reduction here
+    PetscScalar *array_out;
+
+    CHKERRQ(VecGetArrayWrite(vout,&array_out));
+    // sum row and column contributions
     std::transform(
       local.cbegin()+rc_size,local.cend(),local.begin(),local.begin()+rc_size,std::plus<>{}
     );
+    // assign to output
     std::transform(
       local.cbegin(),local.cbegin()+ncol,local.cbegin()+ncol,array_out,
       [bi=b_row](auto ai, auto zi) mutable { return zi-ai*(*bi)++; }
