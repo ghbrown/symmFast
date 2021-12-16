@@ -291,6 +291,7 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
     if (csize) CHKERRMPI(MPI_Reduce(crank ? coldat : MPI_IN_PLACE,coldat,ncol+ncol,MPIU_SCALAR,MPI_SUM,0,msf.col_comm_));
   }
   if (msf.on_diagonal_()) {
+    // final reduction here
     std::transform(
       local.cbegin()+rc_size,local.cend(),local.begin(),local.begin()+rc_size,std::plus<>{}
     );
@@ -298,7 +299,7 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
       local.cbegin(),local.cbegin()+ncol,local.cbegin()+ncol,array_out,
       [bi=b_row](auto ai, auto zi) mutable { return zi-ai*(*bi)++; }
     );
-    // final reduction here
+
     CHKERRQ(VecRestoreArrayRead(vin,const_cast<const PetscScalar**>(&b_row)));
     CHKERRQ(VecRestoreArrayWrite(vout,&array_out));
   } else delete[] b_row;
