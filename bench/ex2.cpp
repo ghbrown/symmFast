@@ -117,19 +117,25 @@ private:
     rend_   = rend;
     cbegin_ = cbegin;
     cend_   = cend;
+    data_.resize((rend_-rbegin_)*(cend_-cbegin_));
     PetscFunctionReturn(0);
   }
 
   auto& operator()(PetscInt i, PetscInt j) noexcept
   {
-    if (on_diagonal_() && i > j) SETERRABORT(PETSC_COMM_SELF,PETSC_ERR_LIB,"Trying to access lower triangular portion");
-    return data_[order_ == DataOrder::ROW_MAJOR ? ncols_sum_(i)+j : nrows_sum_(j)+i];
+    return data_[i*(cend_-cbegin_)+j];
+    //return data_[order_ == DataOrder::ROW_MAJOR ? ncols_sum_(i)+j : nrows_sum_(j)+i];
   }
 
   const auto& operator()(PetscInt i, PetscInt j) const noexcept
   {
-    if (on_diagonal_() && i > j) SETERRABORT(PETSC_COMM_SELF,PETSC_ERR_LIB,"Trying to access lower triangular portion");
-    return data_[order_ == DataOrder::ROW_MAJOR ? ncols_sum_(i)+j : nrows_sum_(j)+i];
+    int rank;
+    MPI_Comm_rank(PetscObjComm(m_),&rank);
+    PetscSynchronizedPrintf(PetscObjComm(m_),"[%d] (%d,%d) -> %d (max %d)\n",rank,i,j,ncols_sum_(i)+j,data_.size());
+    PetscSynchronizedFlush(PetscObjComm(m_),PETSC_STDOUT);
+    MPI_Barrier(PetscObjComm(m_));
+    return data_[i*(cend_-cbegin_)+j];
+    //return data_[order_ == DataOrder::ROW_MAJOR ? ncols_sum_(i)+j : nrows_sum_(j)+i];
   }
 
 public:
@@ -174,7 +180,10 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
     );
     for (auto&& x: recv_buf) if (PetscUnlikely(x == -1)) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_MPI,"MPI_Recv from root failed");
 
-    std::tie(msf->rbegin_,msf->rend_,msf->cbegin_,msf->cend_,col_color,row_color) = recv_buf;
+    const auto [rb,re,cb,ce,rowc,colc] = recv_buf;
+    row_color = rowc;
+    col_color = colc;
+    CHKERRQ(msf->set_ownership_(rb,re,cb,ce));
   } else {
     const auto N          = cmap->N;
     const auto block_size = std::max(N/r,1);
@@ -200,11 +209,8 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
     CHKERRQ(msf->set_ownership_(0,bounds[1],0,bounds[1]));
     col_color = row_color = 0;
   }
-  CHKERRMPI(MPI_Comm_split(PetscObjComm(m),col_color,rank,&msf->col_comm_));
   CHKERRMPI(MPI_Comm_split(PetscObjComm(m),row_color,rank,&msf->row_comm_));
-
-  const auto n = msf->cend_-msf->cbegin_;
-  CHKERRCXX(msf->data_.resize(msf->on_diagonal_() ? n*(n+1)/2 : n*(msf->rend_-msf->rbegin_)));
+  CHKERRMPI(MPI_Comm_split(PetscObjComm(m),col_color,rank%r,&msf->col_comm_));
   PetscFunctionReturn(0);
 }
 
@@ -223,62 +229,104 @@ PetscErrorCode MatSymmFast::destroy(Mat m) noexcept
 PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
 {
   //computes matrix vector product m @ vin = vout
-  const auto&       msf = *impl_cast_(m);
-  const auto        N = m->cmap->N; //TODO: don't think we need this
-  const auto        nrow = msf.rend_ - msf.rbegin_; //local row block size
-  const auto        ncol = msf.cend_ - msf.cbegin_; //local column block size
-  const PetscScalar *array_in;
-  PetscScalar       *array_out;
+  const auto&  msf  = *impl_cast_(m);
+  const auto   nrow = msf.rend_ - msf.rbegin_; //local row block size
+  const auto   ncol = msf.cend_ - msf.cbegin_; //local column block size
+  PetscScalar *array_in = nullptr;
+  PetscScalar *array_out = nullptr;
+  PetscScalar *b_row;
+  PetscScalar *b_col;
 
   PetscFunctionBegin;
-  CHKERRQ(VecGetArrayRead(vin,&array_in));
-  CHKERRQ(VecGetArrayWrite(vout,&array_out));
+  int rank;
+  MPI_Comm_rank(PetscObjComm(m),&rank);
+  if (msf.on_diagonal_()) {
+    CHKERRQ(VecGetArrayRead(vin,const_cast<const PetscScalar**>(&b_row)));
+    PetscValidScalarPointer(b_row,-1);
+    CHKERRQ(VecGetArrayWrite(vout,&array_out));
+    b_col = b_row;
+  }
+  PetscInt vsize;
+  CHKERRQ(VecGetLocalSize(vin,&vsize));
+  CHKERRQ(PetscSynchronizedPrintf(PetscObjComm(m),"[%d] s local %d nrow %d\n",rank,vsize,nrow));
+  CHKERRQ(PetscSynchronizedFlush(PetscObjComm(m),PETSC_STDOUT));
+  MPI_Barrier(PetscObjComm(m));
 
   // TODO get proper slices of b on local rank via broadcast from diagonal
   // to column communicators and row communicators
-  b_row; //from communication on msf->row_comm_
-  b_col; //from communication on msf->col_comm_
-  
+  //CHKERRQ(PetscSynchronizedPrintf(PetscObjComm(m),"[%d] ncol root %d\n",rank,ncol_root));
+  //CHKERRQ(PetscSynchronizedFlush(PetscObjComm(m),PETSC_STDOUT));
+  //MPI_Barrier(PetscObjComm(m));
+  if (msf.on_diagonal_()) {
+    CHKERRQ(PetscSynchronizedPrintf(PetscObjComm(m),"[%d] on diag, using array in\n",rank));
+  } else {
+    b_row = new PetscScalar[nrow];
+    b_col = new PetscScalar[ncol];
+    CHKERRQ(PetscSynchronizedPrintf(PetscObjComm(m),"[%d] off diag allocating\n",rank));
+  }
+  PetscValidScalarPointer(b_row,-1);
+  CHKERRQ(PetscSynchronizedFlush(PetscObjComm(m),PETSC_STDOUT));
+  MPI_Barrier(PetscObjComm(m));
+  PetscMPIInt rsize,rowrank;
 
-  auto rowsums = std::vector<PetscScalar>(m->cmap->N,0);
-  std::generate_n(std::back_inserter(rowsums),nrow,[&,it=msf.data_.cbegin(),i=0]() mutable {
-    const auto begin = it;
-    it += msf.ncols_(i++);
-    return std::accumulate(begin,it,0);
-  });
+  CHKERRMPI(MPI_Comm_size(msf.row_comm_,&rsize));
+  CHKERRMPI(MPI_Comm_rank(msf.row_comm_,&rowrank));
+  CHKERRQ(PetscSynchronizedPrintf(PetscObjComm(m),"[%d] row comm rank %d\n",rank,rowrank));
+  CHKERRQ(PetscSynchronizedFlush(PetscObjComm(m),PETSC_STDOUT));
+  MPI_Barrier(PetscObjComm(m));
+  PetscValidScalarPointer(b_row,-1);
+  if (rank < 3) {
+    CHKERRQ(PetscSynchronizedPrintf(msf.row_comm_,"[%d] row comm 0 rank %d\n",rank,rowrank));
+    CHKERRQ(PetscSynchronizedFlush(msf.row_comm_,PETSC_STDOUT));
+    MPI_Barrier(msf.row_comm_);
+  }
+  if (rsize) CHKERRMPI(MPI_Bcast(b_row,nrow,MPIU_SCALAR,0,msf.row_comm_));
 
-  // TODO: we can overlap computation and communcation by starting row sum updates of A
-  //       since they do not require b
+  int csize,col_root,colrank;
+  CHKERRMPI(MPI_Comm_size(msf.col_comm_,&csize));
+  CHKERRMPI(MPI_Comm_rank(msf.col_comm_,&colrank));
+  CHKERRMPI(MPI_Comm_rank(msf.col_comm_,&col_root));
+  CHKERRQ(PetscSynchronizedPrintf(PetscObjComm(m),"[%d] col comm rank %d\n",rank,rowrank));
+  CHKERRQ(PetscSynchronizedFlush(PetscObjComm(m),PETSC_STDOUT));
+  MPI_Barrier(PetscObjComm(m));
+  CHKERRMPI(MPI_Allreduce(MPI_IN_PLACE,&col_root,1,MPI_INT,MPI_MAX,msf.col_comm_));
+  if (csize) CHKERRMPI(MPI_Bcast(b_col,ncol,MPIU_SCALAR,col_root,msf.col_comm_));
 
-  // all reduce for global row sums
-  // TODO
-  // we should need at least 2 reduces, on along column communicator and one along row
-  // communicator
-  // if we reduce rowsums of A and Z separately we'll need 4 total, but I think we should be
-  // able to combine them
-  CHKERRMPI(
-    MPI_Allreduce(rowsums.data(),rowsums.data(),rowsums.size(),MPIU_SCALAR,MPI_SUM,PetscObjComm(m))
-  );
+  // auto rowsums = std::vector<PetscScalar>(m->cmap->N,0);
+  // std::generate_n(std::back_inserter(rowsums),nrow,[&,it=msf.data_.cbegin(),i=0]() mutable {
+  //   const auto begin = it;
+  //   it += msf.ncols_(i++);
+  //   return std::accumulate(begin,it,0);
+  // });
+
+  // // TODO: we can overlap computation and communcation by starting row sum updates of A
+  // //       since they do not require b
+
+  // // all reduce for global row sums
+  // // TODO
+  // // we should need at least 2 reduces, on along column communicator and one along row
+  // // communicator
+  // // if we reduce rowsums of A and Z separately we'll need 4 total, but I think we should be
+  // // able to combine them
+  // CHKERRMPI(
+  //   MPI_Allreduce(rowsums.data(),rowsums.data(),rowsums.size(),MPIU_SCALAR,MPI_SUM,PetscObjComm(m))
+  // );
 
   //these four variables are the ones to reduce
-  auto ursa_row = std:vector<PetscScalar>(nrow,0); //updates for row sum of A for row communicator
-  auto ursa_col = std:vector<PetscScalar>(ncol,0); //updates for col sum of A for column communicator
-  auto ursz_row = std:vector<PetscScalar>(nrow,0); //updates for row sum of Z for row communicator
-  auto ursz_col = std:vector<PetscScalar>(ncol,0); //updates for col sum of Z for column communicator
+  auto ursa_row = std::vector<PetscScalar>(nrow,0); //updates for row sum of A for row communicator
+  auto ursa_col = std::vector<PetscScalar>(ncol,0); //updates for col sum of A for column communicator
+  auto ursz_row = std::vector<PetscScalar>(nrow,0); //updates for row sum of Z for row communicator
+  auto ursz_col = std::vector<PetscScalar>(ncol,0); //updates for col sum of Z for column communicator
 
   for (auto i = 0; i < nrow; ++i) {
     const auto bi = b_row[i];
-    const auto col_index_start;
-    if (msf->on_diagonal_()){
-      // if on diagonal rank, column indices for row i start at i, k = [i .. ncols-1]
-      col_index_start = i;
-    } else {
-      // if not on a diagonal rank, column indices for row i start at 0, k = [0 .. ncols-1]
-      col_index_start = 0;
-    }
-
-    for (auto k = col_index_start; k < ncol; ++k) {
+    // if on diagonal rank, column indices for row i start at i, k = [i .. ncols-1]
+    // if not on a diagonal rank, column indices for row i start at 0, k = [0 .. ncols-1]
+    for (auto k = 0; k < ncol; ++k) {
       const auto aik = msf(i,k);
+      CHKERRQ(PetscSynchronizedPrintf(PetscObjComm(m),"[%d] here\n",rank));
+      CHKERRQ(PetscSynchronizedFlush(PetscObjComm(m),PETSC_STDOUT));
+      MPI_Barrier(PetscObjComm(m));
       const auto bk = b_col[k];
       const auto aikbibk = aik*(bi + bk); //precompute a_ik*(b_i + b_k)
 
@@ -289,18 +337,19 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
       ursz_row[i] += aikbibk;
 
       //symmetric updates if not on true diagonal of global matrix
-      if (not ((msf->on_diagonal_()) && (i == k))){
+      if (!((msf.on_diagonal_()) && (i == k))){
         ursa_col[k] += aik;
         ursz_col[k] += aikbibk;
       }
-
-    }
     }
   }
-
-  //TODO: not sure what's happening down here
-  CHKERRQ(VecRestoreArrayWrite(vout,&array_out));
-  CHKERRQ(VecRestoreArrayRead(vin,&array_in));
+  if (msf.on_diagonal_()) {
+    CHKERRQ(VecRestoreArrayWrite(vout,&b_row));
+    CHKERRQ(VecRestoreArrayRead(vin,const_cast<const PetscScalar**>(&array_in)));
+  } else {
+    delete[] b_row;
+    delete[] b_col;
+  }
   PetscFunctionReturn(0);
 }
 
@@ -360,10 +409,12 @@ PetscErrorCode MatSymmFast::view(Mat m, PetscViewer vwr) noexcept
 
 PetscErrorCode MatSymmFast::get_vecs(Mat m, Vec *right, Vec *left) noexcept
 {
-  const auto msf     = impl_cast_(m);
-  const auto on_diag = msf->on_diagonal_();
+  const auto  msf     = impl_cast_(m);
+  const auto  on_diag = msf->on_diagonal_();
+  PetscMPIInt size;
 
   PetscFunctionBegin;
+  CHKERRMPI(MPI_Comm_size(PetscObjComm(m),&size));
   if (right) {
     Vec v;
 
@@ -453,6 +504,10 @@ static PetscErrorCode MatMultTime(MPI_Comm comm, MatType type, PetscInt rows, Pe
   CHKERRQ(VecSetFromOptions(vin));
   CHKERRQ(VecSetFromOptions(vout));
   CHKERRQ(VecSetRandom(vin,nullptr));
+  CHKERRQ(VecAssemblyBegin(vin));
+  CHKERRQ(VecAssemblyEnd(vin));
+  CHKERRQ(VecAssemblyBegin(vout));
+  CHKERRQ(VecAssemblyEnd(vout));
 
   // warmup
   CHKERRQ(MatMult_Private(mat,vin,vout));
