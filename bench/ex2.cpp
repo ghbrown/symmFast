@@ -170,7 +170,7 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
     auto recv_buf = make_array(-1,-1,-1,-1,-1,-1);
 
     CHKERRMPI(
-      MPI_Recv(recv_buf.data(),recv_buf.size(),MPIU_INT,0,0,PetscObjComm(m),MPI_STATUS_IGNORE)
+      MPI_Recv(recv_buf.data(),recv_buf.size(),MPI_INT,0,0,PetscObjComm(m),MPI_STATUS_IGNORE)
     );
     for (auto&& x: recv_buf) if (PetscUnlikely(x == -1)) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_MPI,"MPI_Recv from root failed");
 
