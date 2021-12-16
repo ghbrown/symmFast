@@ -15,7 +15,7 @@ def main(infile):
     entries = line.split()
     if len(entries) == 2:
       # timings
-      data[entries[0]] = float(entries[1])
+      data[entries[0]].append(float(entries[1]))
     else:
       mat_size.append(int(entries[0]))
       num_procs.append(int(entries[1]))

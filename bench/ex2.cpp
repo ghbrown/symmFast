@@ -6,6 +6,7 @@
 #include <numeric>
 #include <iostream>
 #include <array>
+#include <algorithm>
 
 #define MATSYMMFAST "symmfast"
 
