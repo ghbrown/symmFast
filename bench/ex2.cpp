@@ -164,7 +164,7 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
   PetscObjectOptionsBegin(PetscObjectCast(m));
   CHKERRQ(PetscOptionsInt("-mat_symmfast_r","num communicators per dim","Mat",r,&r,nullptr));
   PetscOptionsEnd();
-  if (PetscUnlikely(size != r*(r+1)/2)) SETERRQ2(PetscObjComm(m),PETSC_ERR_ARG_SIZ,"Communicator of size %d not %d",size,r*(r+1)/2);
+  //if (PetscUnlikely(size != r*(r+1)/2)) SETERRQ2(PetscObjComm(m),PETSC_ERR_ARG_SIZ,"Communicator of size %d not %d",size,r*(r+1)/2);
 
   if (rank) {
     auto recv_buf = make_array(-1,-1,-1,-1,-1,-1);
@@ -184,7 +184,7 @@ PetscErrorCode MatSymmFast::setup(Mat m) noexcept
     std::cout<<r<<std::endl;
     std::cout<<block_size<<std::endl;
     for (auto i = 0,sum = 0; i < r; ++i) CHKERRCXX(
-      bounds.insert(bounds.cend(),{sum,(i == r-1 ? N : sum+=block_size)-1})
+      bounds.insert(bounds.cend(),{sum,i == r-1 ? N : sum+=block_size})
     );
 
     for (auto i = 1,cur_row = 0,cur_col = 1; i < size; ++i) {
@@ -320,68 +320,150 @@ PetscErrorCode MatSymmFast::create(Mat m) noexcept
 
 PetscErrorCode MatSymmFast::view(Mat m, PetscViewer vwr) noexcept
 {
+  PetscMPIInt rank;
+  const auto  msf = impl_cast_(m);
+
   PetscFunctionBegin;
-  const auto& values = impl_cast_(m)->data_;
+  CHKERRMPI(MPI_Comm_rank(PetscObjComm(m),&rank));
+  CHKERRQ(PetscViewerASCIIPushSynchronized(vwr));
+  CHKERRQ(PetscViewerASCIISynchronizedPrintf(vwr,"[%d] rows [%" PetscInt_FMT ":%" PetscInt_FMT "], cols [%" PetscInt_FMT ":%" PetscInt_FMT "]\n",rank,msf->rbegin_,msf->rend_,msf->cbegin_,msf->cend_));
+  CHKERRQ(PetscViewerFlush(vwr));
+  const auto& values = msf->data_;
   CHKERRQ(PetscScalarView(values.size(),values.data(),vwr));
+  CHKERRQ(PetscViewerFlush(vwr));
+  CHKERRQ(PetscViewerASCIIPopSynchronized(vwr));
   PetscFunctionReturn(0);
 }
 
 PetscErrorCode MatSymmFast::get_vecs(Mat m, Vec *right, Vec *left) noexcept
 {
-  const auto msf = impl_cast_(m);
+  const auto msf     = impl_cast_(m);
+  const auto on_diag = msf->on_diagonal_();
 
   PetscFunctionBegin;
   if (right) {
     Vec v;
 
     CHKERRQ(VecCreate(PetscObjComm(m),&v));
-    CHKERRQ(VecSetSizes(v,msf->on_diagonal_() ? msf->ncols_(0) : 0,m->cmap->N));
     CHKERRQ(VecSetType(v,m->defaultvectype));
-    CHKERRQ(PetscLayoutReference(m->cmap,&v->map));
+    if (on_diag) {
+      CHKERRQ(VecSetSizes(v,msf->ncols_(0),m->cmap->N));
+      v->ops->setrandom = [](Vec v, PetscRandom r) {
+        const auto  n = v->map->n;
+        PetscScalar *array;
+
+        PetscFunctionBegin;
+        CHKERRQ(VecGetArrayWrite(v,&array));
+        for (auto i = 0; i < n; ++i) CHKERRQ(PetscRandomGetValue(r,array+i));
+        CHKERRQ(VecRestoreArrayWrite(v,&array));
+        PetscFunctionReturn(0);
+      };
+    } else {
+      CHKERRQ(VecSetSizes(v,0,m->cmap->N));
+      v->ops->setrandom = [](Vec,PetscRandom) { return 0; };
+    }
     *right = v;
   }
   if (left) {
     Vec v;
 
     CHKERRQ(VecCreate(PetscObjComm(m),&v));
-    CHKERRQ(VecSetSizes(v,msf->on_diagonal_() ? msf->nrows_(0) : 0,m->rmap->N));
     CHKERRQ(VecSetType(v,m->defaultvectype));
-    CHKERRQ(PetscLayoutReference(m->rmap,&v->map));
+    if (on_diag) {
+      CHKERRQ(VecSetSizes(v,msf->nrows_(0),m->rmap->N));
+      v->ops->setrandom = [](Vec v, PetscRandom r) {
+        const auto  n = v->map->n;
+        PetscScalar *array;
+
+        PetscFunctionBegin;
+        CHKERRQ(VecGetArrayWrite(v,&array));
+        for (auto i = 0; i < n; ++i) CHKERRQ(PetscRandomGetValue(r,array+i));
+        CHKERRQ(VecRestoreArrayWrite(v,&array));
+        PetscFunctionReturn(0);
+      };
+    } else {
+      CHKERRQ(VecSetSizes(v,0,m->rmap->N));
+      v->ops->setrandom = [](Vec,PetscRandom) { return 0; };
+    }
     *left = v;
   }
   PetscFunctionReturn(0);
 }
 
-int main(int argc, char*argv[])
+static PetscErrorCode MatMult_Private(Mat m, Vec x, Vec y) noexcept
 {
-  PetscErrorCode ierr;
-  Mat            mat;
-  Vec            vin,vout;
+  PetscFunctionBegin;
+  CHKERRQ(VecLockReadPush(x));
+  if (!m->ops->mult) SETERRQ1(PetscObjectComm(PetscObjectCast(m)),PETSC_ERR_SUP,"Matrix type %s does not have a multiply defined",(PetscObjectCast(m))->type_name);
+  CHKERRQ(PetscLogEventBegin(MAT_Mult,m,x,y,0));
+  CHKERRQ((*m->ops->mult)(m,x,y));
+  CHKERRQ(PetscLogEventEnd(MAT_Mult,m,x,y,0));
+  if (m->erroriffailure) CHKERRQ(VecValidValues(y,3,PETSC_FALSE));
+  CHKERRQ(VecLockReadPop(x));
+  PetscFunctionReturn(0);
+}
 
-  ierr = PetscInitialize(&argc,&argv,nullptr,nullptr);if (PetscUnlikely(ierr)) return ierr;
-  CHKERRQ(MatRegister(MATSYMMFAST,MatSymmFast::create));
+static const auto default_lambda = [](Mat,Vec,Vec){ return 0; };
 
-  auto comm = PETSC_COMM_WORLD;
+template <typename F = decltype(default_lambda)>
+static PetscErrorCode MatMultTime(MPI_Comm comm, MatType type, PetscInt rows, PetscInt cols, F pre_process_fn = default_lambda, std::size_t its = 1000) noexcept
+{
+  PetscMPIInt size;
+  Mat         mat;
+  Vec         vin,vout;
+  double      root_elapsed = 0;
+
+  PetscFunctionBegin;
   CHKERRQ(MatCreate(comm,&mat));
-  CHKERRQ(MatSetSizes(mat,PETSC_DECIDE,PETSC_DECIDE,10,10));
-  CHKERRQ(MatSetType(mat,MATSYMMFAST));
+  CHKERRQ(PetscObjectSetOptionsPrefix(PetscObjectCast(mat),type));
+  CHKERRQ(MatSetSizes(mat,PETSC_DECIDE,PETSC_DECIDE,rows,cols));
+  CHKERRQ(MatSetType(mat,type));
+  CHKERRQ(MatSetOption(mat,MAT_SYMMETRIC,PETSC_TRUE));
+  CHKERRQ(MatSetOption(mat,MAT_SYMMETRY_ETERNAL,PETSC_TRUE));
   CHKERRQ(MatSetFromOptions(mat));
   CHKERRQ(MatSetUp(mat));
   CHKERRQ(MatSetRandom(mat,nullptr));
 
   CHKERRQ(MatCreateVecs(mat,&vin,&vout));
+  CHKERRQ(PetscObjectSetOptionsPrefix(PetscObjectCast(vin),type));
+  CHKERRQ(PetscObjectSetOptionsPrefix(PetscObjectCast(vout),type));
   CHKERRQ(VecSetFromOptions(vin));
   CHKERRQ(VecSetFromOptions(vout));
   CHKERRQ(VecSetRandom(vin,nullptr));
-  CHKERRQ(VecZeroEntries(vout));
 
-  CHKERRQ(VecViewFromOptions(vout,nullptr,"-result_view"));
-  CHKERRQ(MatMult(mat,vin,vout));
-  CHKERRQ(VecViewFromOptions(vout,nullptr,"-result_view"));
+  // warmup
+  CHKERRQ(MatMult_Private(mat,vin,vout));
+  CHKERRQ(PetscBarrier(PetscObjectCast(mat)));
 
+  // for realsies
+  const auto start_time = MPI_Wtime();
+  for (auto i = 0; i < its; ++i) CHKERRQ(MatMult_Private(mat,vin,vout));
+  const auto avg_time = (MPI_Wtime()-start_time)/static_cast<decltype(start_time)>(its);
+
+  CHKERRMPI(MPI_Reduce(&avg_time,&root_elapsed,1,MPI_DOUBLE,MPI_SUM,0,comm));
+
+  CHKERRMPI(MPI_Comm_size(comm,&size));
+  CHKERRQ(PetscPrintf(comm,"%s %g\n",type,root_elapsed/size));
+
+  // cleanup
   CHKERRQ(VecDestroy(&vin));
   CHKERRQ(VecDestroy(&vout));
   CHKERRQ(MatDestroy(&mat));
+  PetscFunctionReturn(0);
+}
+
+int main(int argc, char*argv[])
+{
+  PetscInt       rows = 10, cols = 10;
+  PetscErrorCode ierr;
+
+  ierr = PetscInitialize(&argc,&argv,nullptr,nullptr);if (PetscUnlikely(ierr)) return ierr;
+  auto comm = PETSC_COMM_WORLD;
+  CHKERRQ(MatRegister(MATSYMMFAST,MatSymmFast::create));
+
+  CHKERRQ(MatMultTime(comm,MATDENSE,rows,cols));
+  CHKERRQ(MatMultTime(comm,MATSYMMFAST,rows,cols));
+
   ierr = PetscFinalize();
   return ierr;
 }
