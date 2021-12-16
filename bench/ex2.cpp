@@ -288,7 +288,17 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
     if (csize) CHKERRMPI(MPI_Reduce(crank ? coldat : MPI_IN_PLACE,coldat,ncol+ncol,MPIU_SCALAR,MPI_SUM,0,msf.col_comm_));
   }
   if (msf.on_diagonal_()) {
-    // final reduction here
+    //note that on diagonal ranks nrow = ncol
+    for (auto i = 0; i < nrow; ++i) {
+      local[i] += local[2*nrow+i]; //combine row/column updates for A
+      local[nrow+i] += local[3*nrow+i]; //combine row/column updates for Z
+
+      //local[0:nrow] now contains row/column sums of A
+      //local[nrow:2*nrow] now contains row/column sums of Z
+
+      //c[i] = rowsum(Z)[i] - rowsum(A)[i]*b[i]
+      array_out[i] = local[nrow+i] - local[i]*b_row[i];
+    }
     CHKERRQ(VecRestoreArrayRead(vin,const_cast<const PetscScalar**>(&b_row)));
     CHKERRQ(VecRestoreArrayWrite(vout,&array_out));
   } else delete[] b_row;
