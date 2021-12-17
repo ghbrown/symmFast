@@ -250,9 +250,9 @@ PetscErrorCode MatSymmFast::mat_mult(Mat m, Vec vin, Vec vout) noexcept
 
   // local updates:
   // locals[0:nrow] -> updates for A row sum row comm
-  // locals[nrow:ncol] -> updates for Z row sum row comm
-  // locals[nrow+ncol:nrow+ncol+nrow] -> updates for A row sum col comm
-  // locals[nrow+ncol+nrow:-1] -> updates for Z row sum col comm
+  // locals[nrow:nrow+nrow] -> updates for Z row sum row comm
+  // locals[nrow+nrow:nrow+nrow+ncol] -> updates for A row sum col comm
+  // locals[nrow+nrow+ncol:-1] -> updates for Z row sum col comm
   auto local = std::vector<PetscScalar>(nrow+nrow+ncol+ncol,0);
   const auto rc_size = nrow+nrow;
 
