@@ -7,13 +7,15 @@ import collections
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plot(x,data,sub,title,xlabel,ylabel):
+def plot(x,data,sub,title,xlabel,ylabel,ideal=None):
   for key,val in data.items():
     if key == 'dense':
       label = 'canonical 1-D column'
     else:
       label = 'fast 2-D upper triangular'
     plt.loglog(x,val[sub],label=label,marker='x')
+  if ideal is not None:
+    plt.loglog(x,ideal,'r-',linewidth=0.7,label='ideal')
   plt.ylabel(ylabel)
   plt.xlabel(xlabel)
   plt.title(title)
@@ -48,8 +50,13 @@ def main(infile):
     data[k]['speedup'] = dk['time'][0]/dk['time']
     data[k]['efficiency'] = np.divide(dk['speedup'],num_procs)
   suffix    = infile.stem.split('_')[1].title()
-  plot(num_procs,data,'speedup',f'Strong Scaling Speedup - {suffix}','ranks','speedup')
-  plot(num_procs,data,'efficiency',f'Strong Scaling Efficiency - {suffix}','ranks','efficiency')
+  plot(
+    num_procs,data,'speedup',f'Strong Scaling Speedup - {suffix}','ranks','speedup',ideal=num_procs
+  )
+  plot(
+    num_procs,data,'efficiency',f'Strong Scaling Efficiency - {suffix}','ranks','efficiency',
+    ideal=np.ones_like(num_procs)
+  )
   plot(num_procs,data,'time',f'Execution Time - {suffix}','ranks','time [s]')
   return
 
