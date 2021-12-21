@@ -11,9 +11,14 @@ Especially in settings where multiplication is more expensive than addition, lik
 
 Such speedups are particularly valuable since the symmetric matrix times vector multiply is one of the most important kernels in numerical linear algebra, being the basis for iterative linear and eigenpair solvers on symmetric matrices.
 
+### Implementation and contents
+The project was originally going to use a larger PETSc framework, which remains in the repository.
+However, in the interest of development speed, the project has been contained (with its own makefile) to `bench/ex2.cpp`.
 
-### Install Instructions
-After cloning this repository to `/symmFast` directory
-```
-$ make ?????
-```
+This folder also contains the slurm script used to perform strong scaling benchmarking (`strong_scaling.sh`), the output files of said runs for real and complex arrays (`output_<type>.sh`), and a Python processing script.
+
+### Installation
+Requires: working C++ compiler and PETSc.
+
+Use the makefile in (`bench`).
+
